@@ -146,7 +146,7 @@ resource "aws_security_group" "nodes" {
 # RDS — allow PostgreSQL from EKS nodes only
 resource "aws_security_group" "rds" {
   name        = "${var.name}-rds"
-  description = "RDS PostgreSQL — allow from EKS nodes only"
+  description = "RDS PostgreSQL - allow from EKS nodes only"
   vpc_id      = aws_vpc.this.id
 
   ingress {
@@ -173,7 +173,7 @@ resource "aws_security_group" "rds" {
 # ElastiCache — allow Valkey/Redis from EKS nodes only
 resource "aws_security_group" "elasticache" {
   name        = "${var.name}-elasticache"
-  description = "ElastiCache Valkey — allow from EKS nodes only"
+  description = "ElastiCache Valkey - allow from EKS nodes only"
   vpc_id      = aws_vpc.this.id
 
   ingress {
@@ -200,7 +200,7 @@ resource "aws_security_group" "elasticache" {
 # ALB — allow HTTP and HTTPS from anywhere
 resource "aws_security_group" "alb" {
   name        = "${var.name}-alb"
-  description = "ALB — allow HTTP/HTTPS from internet"
+  description = "ALB - allow HTTP/HTTPS from internet"
   vpc_id      = aws_vpc.this.id
 
   ingress {
