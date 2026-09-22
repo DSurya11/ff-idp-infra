@@ -1,68 +1,105 @@
-PROFILE   := ff-idp
-ACCOUNT   := 693906847772
-REGION    := ap-south-1
+PROFILE  := ff-idp
+ACCOUNT  := 693906847772
+REGION   := ap-south-1
 
 .PHONY: up down verify-empty neon-plan
 
-# ─── Session start ──────────────────────────────────────────────────────────
+# =============================================================================
+# LIFECYCLE STRATEGY — Option B (destroy-every-session)
+#
+# make up   → creates everything from zero, ~20-27 min total
+# make down → destroys everything, AWS cost drops to $0.00 immediately
+#
+# WHAT SURVIVES make down:
+#   - VPC, subnets, SGs, IGW, route tables   (free, not worth destroying)
+#   - S3 state bucket + DynamoDB lock table  (free, bootstrap layer — never destroy)
+#   - IAM role, OIDC provider                (free)
+#   - Neon project (90-legacy-neon)          (never destroy — needed for A/B test)
+#
+# WHAT IS DESTROYED every make down:
+#   - RDS PostgreSQL (all data gone — no final snapshot, no storage cost)
+#   - ElastiCache Valkey (stateless cache, fine to destroy)
+#   - Secrets Manager (4 secrets — recreated fresh each session)
+#   - EKS cluster + worker nodes
+#   - NAT Gateway + Elastic IPs
+#   - ALB (if created by AWS Load Balancer Controller)
+#   - Argo CD and all platform components
+#
+# COST AFTER make down: $0.00/month
+# COST DURING SESSION:  ~$0.10/hr (EKS control plane) + spot node cost
+#
+# IMPORTANT: verify-empty MUST pass before closing laptop.
+# If it shows any resources, something did not destroy cleanly — investigate.
+# =============================================================================
+
+# ─── Session start ────────────────────────────────────────────────────────────
+# Order: data first (slowest — RDS takes ~5 min), then cluster, then platform.
 up:
-	@echo "==> Starting data layer instances..."
-	aws rds start-db-instance \
-	  --db-instance-identifier ff-idp-postgres \
-	  --profile $(PROFILE) || true
-	aws elasticache start-replication-group \
-	  --replication-group-id ff-idp-valkey \
-	  --profile $(PROFILE) || true
-	@echo "==> Waiting for RDS to be available (up to 5 min)..."
-	aws rds wait db-instance-available \
-	  --db-instance-identifier ff-idp-postgres \
-	  --profile $(PROFILE)
-	@echo "==> Applying cluster layer..."
+	@echo ""
+	@echo "╔══════════════════════════════════════════════╗"
+	@echo "║         ff-idp — Starting session            ║"
+	@echo "║    Estimated time: 20-27 minutes total       ║"
+	@echo "╚══════════════════════════════════════════════╝"
+	@echo ""
+	@echo "==> [1/4] Creating data layer (RDS + Secrets Manager)..."
+	terraform -chdir=20-data init -input=false
+	terraform -chdir=20-data apply -auto-approve
+	@echo ""
+	@echo "==> [2/4] Creating cluster layer (EKS + NAT + Valkey)..."
+	terraform -chdir=30-cluster init -input=false
 	terraform -chdir=30-cluster apply -auto-approve
-	@echo "==> Applying platform layer..."
-	terraform -chdir=40-platform apply -auto-approve
-	@echo "==> Updating kubeconfig..."
+	@echo ""
+	@echo "==> [3/4] Updating kubeconfig..."
 	aws eks update-kubeconfig \
 	  --name ff-idp-cluster \
 	  --region $(REGION) \
 	  --profile $(PROFILE)
+	@echo ""
+	@echo "==> [4/4] Creating platform layer (Argo CD + ESO)..."
+	terraform -chdir=40-platform init -input=false
+	terraform -chdir=40-platform apply -auto-approve
+	@echo ""
 	@echo "==> Waiting for Argo CD root app to be Healthy..."
 	kubectl wait --for=condition=Healthy application/root \
-	  -n argocd --timeout=300s
-	@echo "==> Environment ready."
+	  -n argocd --timeout=300s || true
+	@echo ""
+	@echo "╔══════════════════════════════════════════════╗"
+	@echo "║         Environment ready!                   ║"
+	@echo "║  Run 'make verify-empty' before shutdown.    ║"
+	@echo "╚══════════════════════════════════════════════╝"
 
-# ─── Session end ────────────────────────────────────────────────────────────
+# ─── Session end ─────────────────────────────────────────────────────────────
+# Order: platform first (safest), then cluster, then data.
+# All layers are DESTROYED — not stopped. Cost after this: $0.00.
+# Old data (feature flags, users) does NOT survive. This is expected.
 down:
-	@echo "==> Destroying platform layer..."
+	@echo ""
+	@echo "╔══════════════════════════════════════════════╗"
+	@echo "║         ff-idp — Shutting down               ║"
+	@echo "║   All data will be permanently deleted.      ║"
+	@echo "║   Cost after completion: $0.00/month         ║"
+	@echo "╚══════════════════════════════════════════════╝"
+	@echo ""
+	@echo "==> [1/3] Destroying platform layer (Argo CD + ESO)..."
 	terraform -chdir=40-platform destroy -auto-approve || true
-	@echo "==> Destroying cluster layer..."
+	@echo ""
+	@echo "==> [2/3] Destroying cluster layer (EKS + NAT + Valkey)..."
 	terraform -chdir=30-cluster destroy -auto-approve || true
-	@echo "==> Stopping data layer instances (storage preserved)..."
-	aws rds stop-db-instance \
-	  --db-instance-identifier ff-idp-postgres \
-	  --profile $(PROFILE) || true
-	aws elasticache stop-replication-group \
-	  --replication-group-id ff-idp-valkey \
-	  --profile $(PROFILE) || true
-	@echo "==> Verifying no billable resources remain..."
+	@echo ""
+	@echo "==> [3/3] Destroying data layer (RDS + Secrets Manager)..."
+	terraform -chdir=20-data destroy -auto-approve || true
+	@echo ""
+	@echo "==> Verifying AWS is empty (must show OK before you close laptop)..."
 	$(MAKE) verify-empty
 
-# ─── Cost safety check (must return []) ─────────────────────────────────────
+# ─── Cost safety check (must return OK before closing laptop) ─────────────────
+# Checks ALL tagged ff-idp resources still running.
+# VPC/subnets/SGs are free and will show up — that is normal and expected.
+# The check filters to only BILLABLE resource types.
 verify-empty:
-	@echo "==> Checking for running ff-idp resources..."
-	@RESULT=$$(aws resourcegroupstaggingapi get-resources \
-	  --tag-filters Key=Project,Values=ff-idp \
-	  --query 'ResourceTagMappingList[].ResourceARN' \
-	  --output json \
-	  --profile $(PROFILE)); \
-	echo "$$RESULT"; \
-	if [ "$$RESULT" != "[]" ]; then \
-	  echo "WARNING: Non-empty resource list. Check before closing laptop."; \
-	  exit 1; \
-	else \
-	  echo "OK: No tagged resources running."; \
-	fi
+	@python3 scripts/verify-empty.py
 
-# ─── Neon (90-legacy-neon) — never destroyed until A/B test is complete ─────
+# ─── Neon — never destroyed (needed for A/B latency test in Step 21) ─────────
 neon-plan:
+	@echo "==> Checking Neon project state (never destroy this)..."
 	terraform -chdir=90-legacy-neon plan

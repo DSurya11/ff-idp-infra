@@ -109,51 +109,27 @@ resource "aws_db_instance" "postgres" {
   # must return false. psql from laptop must fail/timeout.
   publicly_accessible = false
 
-  # Retain a final snapshot when the instance is deleted.
-  # In a lab setting deletion_protection=false is acceptable, but we still
-  # take the final snapshot as a data-safety habit.
-  skip_final_snapshot       = false
-  final_snapshot_identifier = "ff-idp-postgres-final-${formatdate("YYYY-MM-DD", timestamp())}"
-  deletion_protection       = false
+  # Option B (destroy-every-session): skip_final_snapshot = true
+  # If set to false, every terraform destroy takes a 20GB snapshot at $0.131/GB-month.
+  # 12 destroys/month = $31/month in snapshots — completely defeats Option B's purpose.
+  skip_final_snapshot = true
+  deletion_protection = false
 
-  # Disable automated backups for cost (lab environment — sessions are ephemeral)
+  # backup_retention_period = 0 means no automated daily backups.
+  # Automated backups = extra storage cost. Not needed for ephemeral lab instances.
   backup_retention_period = 0
 
   # Performance Insights adds cost — disable in lab
   performance_insights_enabled = false
 
+  lifecycle {
+    # final_snapshot_identifier uses timestamp() which re-evaluates on every plan,
+    # producing a permanent "will update" diff even when nothing changed.
+    ignore_changes = [final_snapshot_identifier]
+  }
+
   tags = {
     Name = "ff-idp-postgres"
-  }
-}
-
-# ─── ElastiCache Valkey ───────────────────────────────────────────────────────
-
-resource "aws_elasticache_subnet_group" "valkey" {
-  name        = "ff-idp-valkey"
-  description = "Private subnets for ElastiCache Valkey"
-  subnet_ids  = data.terraform_remote_state.network.outputs.private_subnet_ids
-}
-
-resource "aws_elasticache_replication_group" "valkey" {
-  replication_group_id = "ff-idp-valkey"
-  description          = "Feature Flag IDP — Valkey cache"
-
-  engine               = "valkey"
-  engine_version       = "7.2"
-  node_type            = "cache.t4g.micro"
-  num_cache_clusters   = 1
-  parameter_group_name = "default.valkey7"
-
-  subnet_group_name  = aws_elasticache_subnet_group.valkey.name
-  security_group_ids = [data.terraform_remote_state.network.outputs.sg_elasticache_id]
-
-  # No encryption at rest or in transit for lab (adds latency on t4g.micro)
-  at_rest_encryption_enabled = false
-  transit_encryption_enabled = false
-
-  tags = {
-    Name = "ff-idp-valkey"
   }
 }
 

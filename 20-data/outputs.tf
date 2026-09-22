@@ -1,5 +1,5 @@
 output "rds_endpoint" {
-  description = "RDS endpoint (host:port) — use this in the DATABASE_URL stored in Secrets Manager"
+  description = "RDS endpoint (host:port) - use this in the DATABASE_URL stored in Secrets Manager"
   value       = aws_db_instance.postgres.endpoint
 }
 
@@ -8,11 +8,9 @@ output "rds_address" {
   value       = aws_db_instance.postgres.address
 }
 
-output "valkey_endpoint" {
-  description = "ElastiCache Valkey primary endpoint"
-  value       = aws_elasticache_replication_group.valkey.primary_endpoint_address
-}
-
+# NOTE: Valkey endpoint is NOT here — ElastiCache lives in 30-cluster
+# (destroyed nightly) because ElastiCache has no stop API and would cost
+# $0.016/hr = ~$11.50/month if left permanently running in this layer.
 output "db_creds_secret_arn" {
   description = "ARN of the ff-idp/db-creds Secrets Manager secret"
   value       = aws_secretsmanager_secret.db_creds.arn
