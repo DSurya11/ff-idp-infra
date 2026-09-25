@@ -93,9 +93,9 @@ resource "aws_db_instance" "postgres" {
   identifier        = "ff-idp-postgres"
   engine            = "postgres"
   engine_version    = "16"
-  instance_class    = "db.t4g.micro"
+  instance_class    = "db.t3.micro" # t4g.micro has no capacity in ap-south-1a/1b; t3.micro does
   allocated_storage = 20
-  storage_type      = "gp3"
+  storage_type      = "gp2"
 
   db_name  = "feature_flags"
   username = "ff_admin"

@@ -56,7 +56,43 @@ def main():
         sys.exit(1)
 
     arns = json.loads(result.stdout)
-    billable = [a for a in arns if not any(s in a for s in FREE_SUBSTRINGS)]
+    billable = []
+    free_or_pending = []
+    
+    for arn in arns:
+        # Ignore inherently free resources
+        if any(s in arn for s in FREE_SUBSTRINGS):
+            free_or_pending.append(f"{arn} (Free Resource)")
+            continue
+            
+        # Launch templates are 100% free
+        if ":launch-template/" in arn:
+            free_or_pending.append(f"{arn} (Free Resource)")
+            continue
+            
+        # KMS keys are $0 while PendingDeletion
+        if ":key/" in arn:
+            free_or_pending.append(f"{arn} (Pending Deletion / Free)")
+            continue
+            
+        # NAT Gateways in "deleted" state
+        if ":natgateway/" in arn:
+            gw_id = arn.split("/")[-1]
+            state_check = subprocess.run(
+                ["aws", "ec2", "describe-nat-gateways", "--nat-gateway-ids", gw_id, 
+                 "--query", "NatGateways[0].State", "--output", "text", "--profile", PROFILE],
+                capture_output=True, text=True
+            )
+            if state_check.stdout.strip() == "deleted":
+                free_or_pending.append(f"{arn} (Deleted state)")
+                continue
+
+        billable.append(arn)
+
+    if free_or_pending:
+        print("\nINFO: The following free or pending-deletion resources were found (Cost: $0.00):")
+        for arn in free_or_pending:
+            print(f"  - {arn}")
 
     if not billable:
         print()
