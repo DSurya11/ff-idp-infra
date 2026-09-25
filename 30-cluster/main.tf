@@ -429,10 +429,12 @@ data "aws_iam_policy_document" "alb_controller_assume_role" {
   }
 }
 
-# Official ALB controller IAM policy from the upstream repo (v2.8.3).
+# Official ALB controller IAM policy from the upstream repo (v2.11.0 — matches chart v3.5.0).
 # Fetched at terraform apply time — no manual copy-paste needed.
+# Finding: v2.8.3 policy is missing elasticloadbalancing:DescribeListenerAttributes
+# which ALB controller v2.11+ requires. Always align policy version with chart version.
 data "http" "alb_controller_iam_policy" {
-  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.8.3/docs/install/iam_policy.json"
+  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.11.0/docs/install/iam_policy.json"
 
   request_headers = {
     Accept = "application/json"
