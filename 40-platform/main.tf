@@ -164,6 +164,54 @@ resource "helm_release" "eso" {
 }
 
 # =============================================================================
+# AWS LOAD BALANCER CONTROLLER
+# =============================================================================
+# Turns Ingress resources into ALBs. Installed here (not by Argo CD) because the
+# Ingress in env-config cannot become healthy without it, and nothing else in the
+# repo installs it yet - Step 26 may move it into an Argo CD app.
+#
+# IRSA role + policy come from 30-cluster (policy version must match chart version).
+# ALBs it creates are NOT tracked by Terraform: scripts/down.sh deletes them
+# before the cluster layer is destroyed.
+# One replica: t4g.small nodes are small and this is a lab.
+# =============================================================================
+
+resource "helm_release" "alb_controller" {
+  name       = "aws-load-balancer-controller"
+  repository = "https://aws.github.io/eks-charts"
+  chart      = "aws-load-balancer-controller"
+  version    = "3.5.0"
+  namespace  = "kube-system"
+  wait       = true
+  timeout    = 300
+
+  set {
+    name  = "clusterName"
+    value = data.terraform_remote_state.cluster.outputs.cluster_name
+  }
+  set {
+    name  = "region"
+    value = "ap-south-1"
+  }
+  set {
+    name  = "vpcId"
+    value = data.aws_eks_cluster.this.vpc_config[0].vpc_id
+  }
+  set {
+    name  = "serviceAccount.name"
+    value = "aws-load-balancer-controller"
+  }
+  set {
+    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = data.terraform_remote_state.cluster.outputs.alb_controller_irsa_role_arn
+  }
+  set {
+    name  = "replicaCount"
+    value = "1"
+  }
+}
+
+# =============================================================================
 # ARGO CD
 # =============================================================================
 # Argo CD is installed by Terraform (bootstrap problem: Argo CD cannot install itself).
@@ -363,6 +411,6 @@ resource "null_resource" "argocd_root_app" {
     command = "kubectl delete application root -n argocd --ignore-not-found=true --timeout=60s || true"
   }
 
-  depends_on = [helm_release.argocd]
+  depends_on = [helm_release.argocd, helm_release.alb_controller]
 }
 

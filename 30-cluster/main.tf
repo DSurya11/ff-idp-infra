@@ -152,47 +152,8 @@ resource "aws_route" "private_nat_1b" {
 }
 
 # =============================================================================
-# ECR REPOSITORY
+# ECR REPOSITORY - moved to 15-registry (permanent layer; images survive make down)
 # =============================================================================
-# IMMUTABLE tags prevent overwriting a pushed image SHA — critical for GitOps.
-# scan_on_push: vulnerability scan runs automatically on every docker push.
-# Lifecycle policy: keep last 20 images. ECR storage is $0.10/GB-month;
-#   20 typical Python images ~ 200MB each = ~4GB = ~$0.40/month. Acceptable.
-
-resource "aws_ecr_repository" "feature_flag_service" {
-  name                 = "feature-flag-service"
-  image_tag_mutability = "IMMUTABLE"
-  force_delete         = true # ephemeral lab: a non-empty repo must not block make down
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = {
-    Name = "feature-flag-service"
-  }
-}
-
-resource "aws_ecr_lifecycle_policy" "feature_flag_service" {
-  repository = aws_ecr_repository.feature_flag_service.name
-
-  policy = jsonencode({
-    rules = [
-      {
-        rulePriority = 1
-        description  = "Keep last 20 images - expire older ones"
-        selection = {
-          tagStatus   = "any"
-          countType   = "imageCountMoreThan"
-          countNumber = 20
-        }
-        action = {
-          type = "expire"
-        }
-      }
-    ]
-  })
-}
 
 # =============================================================================
 # ELASTICACHE VALKEY
@@ -240,6 +201,22 @@ resource "aws_elasticache_replication_group" "valkey" {
   tags = {
     Name = "ff-idp-valkey"
   }
+}
+
+# The replication group endpoint contains a random hash that changes every time the
+# group is recreated (i.e. every session under Option B), so it cannot live in Git.
+# Publish it to Secrets Manager; ESO syncs it into the app's K8s Secret as REDIS_URL.
+resource "aws_secretsmanager_secret" "valkey" {
+  name                    = "ff-idp/valkey"
+  description             = "Valkey connection URL - recreated every session"
+  recovery_window_in_days = 0 # immediate deletion so the name is free on next make up
+}
+
+resource "aws_secretsmanager_secret_version" "valkey" {
+  secret_id = aws_secretsmanager_secret.valkey.id
+  secret_string = jsonencode({
+    url = "redis://${aws_elasticache_replication_group.valkey.primary_endpoint_address}:6379"
+  })
 }
 
 # =============================================================================
@@ -454,12 +431,13 @@ data "aws_iam_policy_document" "alb_controller_assume_role" {
   }
 }
 
-# Official ALB controller IAM policy from the upstream repo (v2.11.0 — matches chart v3.5.0).
+# Official ALB controller IAM policy from the upstream repo (v3.5.0 - matches chart 3.5.0 installed by 40-platform).
 # Fetched at terraform apply time — no manual copy-paste needed.
 # Finding: v2.8.3 policy is missing elasticloadbalancing:DescribeListenerAttributes
-# which ALB controller v2.11+ requires. Always align policy version with chart version.
+# which ALB controller v2.11+ requires. Always align policy version with chart version
+# (chart 3.5.0 = controller v3.5.0; the old 2.11.0 policy predates the v3 line).
 data "http" "alb_controller_iam_policy" {
-  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.11.0/docs/install/iam_policy.json"
+  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.5.0/docs/install/iam_policy.json"
 
   request_headers = {
     Accept = "application/json"

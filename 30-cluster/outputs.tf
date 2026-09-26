@@ -50,13 +50,6 @@ output "ebs_csi_irsa_role_arn" {
   value       = aws_iam_role.ebs_csi.arn
 }
 
-# ─── ECR ─────────────────────────────────────────────────────────────────────
-
-output "ecr_repository_url" {
-  description = "Full ECR URL for the feature-flag-service image (without tag)"
-  value       = aws_ecr_repository.feature_flag_service.repository_url
-}
-
 # ─── ElastiCache Valkey ───────────────────────────────────────────────────────
 
 output "valkey_primary_endpoint" {

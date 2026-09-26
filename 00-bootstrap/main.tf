@@ -147,7 +147,7 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
 # main branch only. The condition is intentionally strict — no wildcards.
 #
 # SECURITY: The sub condition pins to a specific repo AND branch.
-#   repo:DSurya11/Feature-Flag-Service:ref:refs/heads/main
+#   repo:DSurya11@162597218/Feature-Flag-Service@1368152185:ref:refs/heads/main
 #   Any other repo or branch cannot assume this role.
 #   Never use repo:*:* — that would allow any GitHub Action in any repo
 #   belonging to the GitHub OIDC provider to assume this role.
@@ -172,7 +172,11 @@ data "aws_iam_policy_document" "github_ci_trust" {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       # Exact repo + exact branch. No wildcards.
-      values = ["repo:DSurya11/Feature-Flag-Service:ref:refs/heads/main"]
+      # GitHub's OIDC sub claim now embeds immutable owner and repo IDs
+      # (repo:OWNER@OWNER_ID/REPO@REPO_ID:...). The old "repo:OWNER/REPO:..." form no longer
+      # matches, which shows up as "Not authorized to perform sts:AssumeRoleWithWebIdentity".
+      # IDs: DSurya11 = 162597218, Feature-Flag-Service = 1368152185.
+      values = ["repo:DSurya11@162597218/Feature-Flag-Service@1368152185:ref:refs/heads/main"]
     }
   }
 }

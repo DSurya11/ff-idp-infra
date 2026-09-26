@@ -9,7 +9,8 @@ Exit 1   → billable resources still running, do NOT close laptop
 Resource types that are always FREE and are intentionally excluded:
   VPC, subnets, security groups, route tables, internet gateways,
   S3 buckets, DynamoDB tables, IAM roles, OIDC providers,
-  RDS subnet groups, ElastiCache subnet groups
+  RDS subnet groups, ElastiCache subnet groups,
+  ECR repository (permanent, storage-only cost)
 
 Resource types that ARE billable and will trigger a warning:
   RDS instances, ElastiCache replication groups, EKS clusters,
@@ -33,6 +34,7 @@ FREE_SUBSTRINGS = (
     ":subgrp:",          # RDS subnet group
     "subnetgroup:",      # ElastiCache subnet group
     ":user/",
+    ":repository/",      # ECR (15-registry, permanent; ~$0.10/GB-month storage only)
 )
 
 PROFILE = "ff-idp"
@@ -70,7 +72,6 @@ DIRECT_CHECKS = [
                       "Snapshots[].SnapshotId"]),
     ("Secrets Manager secret", ["secretsmanager", "list-secrets", "--query", "SecretList[].Name"]),
     ("VPC endpoint", ["ec2", "describe-vpc-endpoints", "--query", "VpcEndpoints[].VpcEndpointId"]),
-    ("ECR repository", ["ecr", "describe-repositories", "--query", "repositories[].repositoryName"]),
     ("CloudWatch log group", ["logs", "describe-log-groups", "--query", "logGroups[].logGroupName"]),
 ]
 
