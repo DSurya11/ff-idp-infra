@@ -166,7 +166,15 @@ resource "aws_secretsmanager_secret_version" "db_creds" {
   }
 }
 
-# JWT secret — placeholder; fill in console before first cluster bring-up
+# JWT signing key - generated fresh every make up.
+# Was a placeholder to fill in by hand, but Argo CD now deploys the app automatically
+# right after make up, so a placeholder would be live before anyone could replace it.
+# A new key per session is fine: the whole database (users, tokens' audience) is new too.
+resource "random_password" "jwt" {
+  length  = 64
+  special = false
+}
+
 resource "aws_secretsmanager_secret" "jwt_secret" {
   name                    = "ff-idp/jwt-secret"
   description             = "JWT signing key for feature-flag-service"
@@ -176,9 +184,10 @@ resource "aws_secretsmanager_secret" "jwt_secret" {
 resource "aws_secretsmanager_secret_version" "jwt_secret" {
   secret_id = aws_secretsmanager_secret.jwt_secret.id
   secret_string = jsonencode({
-    JWT_SECRET_KEY = "REPLACE_ME_before_first_cluster_up"
+    JWT_SECRET_KEY = random_password.jwt.result
   })
 
+  # Manual rotation in the console (ESO rotation test) must not be overwritten.
   lifecycle {
     ignore_changes = [secret_string]
   }

@@ -272,6 +272,22 @@ resource "helm_release" "argocd" {
       # Without this, Argo CD can only sync into its own namespace.
       cm:
         application.namespaces: "feature-flag-dev,feature-flag-staging,feature-flag-prod,monitoring,kyverno"
+        # App-of-apps: Argo CD 1.8+ no longer reports health for Application resources,
+        # so the root app would not wait for wave 0 (platform-cluster) before wave 1
+        # (feature-flag-dev). This is the upstream-documented health check that restores it.
+        resource.customizations.health.argoproj.io_Application: |
+          hs = {}
+          hs.status = "Progressing"
+          hs.message = ""
+          if obj.status ~= nil then
+            if obj.status.health ~= nil then
+              hs.status = obj.status.health.status
+              if obj.status.health.message ~= nil then
+                hs.message = obj.status.health.message
+              end
+            end
+          end
+          return hs
 
     server:
       # Resource requests sized for t4g.small (2vCPU/2GiB per node, shared with system pods)
@@ -313,109 +329,65 @@ resource "helm_release" "argocd" {
 }
 
 # =============================================================================
-# ARGO CD — APP OF APPS ROOT APPLICATION
+# ARGO CD - APP OF APPS ROOT APPLICATION
 # =============================================================================
-# The root Application points at the env-config repo.
-# Argo CD syncs this and discovers all child Applications defined there.
+# The ONLY Application Terraform creates. It syncs env-config/platform/argocd-apps,
+# which holds one child Application per concern (platform-cluster, feature-flag-dev).
+# Children carry sync waves; the Application health check in argocd-cm (above) makes
+# the root wait for each wave to be Healthy before starting the next.
+#
+# SYNC POLICY: automated + prune + selfHeal. Adding/removing a child Application file
+# in Git is all it takes to deploy/remove an environment.
 #
 # WHY null_resource + kubectl, NOT kubernetes_manifest:
-#   kubernetes_manifest validates the CRD at PLAN time. Argo CD CRDs don't
-#   exist until the helm_release.argocd is applied. This creates a
-#   chicken-and-egg problem that kubernetes_manifest cannot handle.
-#   null_resource runs after the helm release is deployed (at apply time),
-#   at which point the CRDs are already installed.
+#   kubernetes_manifest validates the CRD at PLAN time, and Argo CD's CRDs do not exist
+#   until helm_release.argocd is applied. local-exec runs at apply time, after the CRDs.
 #
-# SYNC POLICY: automated with selfHeal + prune.
-#   selfHeal: reverts manual kubectl apply changes.
-#   prune: removes K8s resources when manifests are removed from Git.
-#
-# NOTE: The env-config repo currently has a flat structure (Step 27 restructure
-# is pending). Path is set to "." (repo root) for now.
-# After Step 27: change path to "platform/argocd-apps"
-#
-# DESTROY: On terraform destroy, the null_resource runs the delete command
-#   via the destroy provisioner, removing the root Application from the cluster
-#   before Argo CD itself is removed.
+# DESTROY: scripts/down.sh deletes this Application first. Its finalizer cascades to the
+#   children, whose finalizers delete their resources, including the Ingress, so the ALB
+#   controller removes the ALB while it is still running. The destroy provisioner below
+#   is the fallback when 40-platform is destroyed directly.
 # =============================================================================
+
+locals {
+  argocd_root_app = <<-YAML
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: root
+      namespace: argocd
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/DSurya11/feature-flag-service-env-config
+        targetRevision: HEAD
+        path: platform/argocd-apps
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+  YAML
+}
 
 resource "null_resource" "argocd_root_app" {
   triggers = {
-    # Re-apply if cluster endpoint changes (new cluster after make up)
+    # Re-apply if the cluster is new (every make up) or the manifest changes
     cluster_endpoint = data.aws_eks_cluster.this.endpoint
-    # Re-apply if the manifest content changes
-    manifest_hash = sha256(<<-YAML
-      apiVersion: argoproj.io/v1alpha1
-      kind: Application
-      metadata:
-        name: root
-        namespace: argocd
-        finalizers:
-          - resources-finalizer.argocd.argoproj.io
-      spec:
-        project: default
-        source:
-          repoURL: https://github.com/DSurya11/feature-flag-service-env-config
-          targetRevision: HEAD
-          path: "."
-          directory:
-            recurse: false
-            # Flat repo until Step 27: only the EKS/dev manifests. The rest (kind manifests,
-            # Kyverno, ServiceMonitor) need CRDs or a different cluster.
-            include: "{namespace-dev,cluster-secret-store,externalsecret-feature-flag-dev,eks-api-deployment,eks-db-migrate-job,eks-api-service,eks-api-ingress}.yaml"
-        destination:
-          server: https://kubernetes.default.svc
-          namespace: argocd
-        syncPolicy:
-          automated:
-            prune: true
-            selfHeal: true
-          syncOptions:
-            - CreateNamespace=true
-            - ServerSideApply=true
-    YAML
-    )
+    manifest_hash    = sha256(local.argocd_root_app)
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
-      kubectl apply -f - <<'YAML'
-      apiVersion: argoproj.io/v1alpha1
-      kind: Application
-      metadata:
-        name: root
-        namespace: argocd
-        finalizers:
-          - resources-finalizer.argocd.argoproj.io
-      spec:
-        project: default
-        source:
-          repoURL: https://github.com/DSurya11/feature-flag-service-env-config
-          targetRevision: HEAD
-          path: "."
-          directory:
-            recurse: false
-            # Flat repo until Step 27: only the EKS/dev manifests. The rest (kind manifests,
-            # Kyverno, ServiceMonitor) need CRDs or a different cluster.
-            include: "{namespace-dev,cluster-secret-store,externalsecret-feature-flag-dev,eks-api-deployment,eks-db-migrate-job,eks-api-service,eks-api-ingress}.yaml"
-        destination:
-          server: https://kubernetes.default.svc
-          namespace: argocd
-        # NOTE: syncPolicy is intentionally omitted here (no automated sync).
-        # The env-config repo has a flat structure until Step 27 restructure.
-        # Enabling auto-sync on the flat repo causes failures because the raw
-        # manifests reference CRDs (ServiceMonitor, ClusterPolicy) not yet installed.
-        # After Step 27: re-enable automated sync with prune + selfHeal.
-        syncPolicy:
-          syncOptions:
-            - CreateNamespace=true
-            - ServerSideApply=true
-      YAML
-    EOT
+    command = "kubectl apply -f - <<'YAML'\n${local.argocd_root_app}YAML"
   }
 
   provisioner "local-exec" {
     when    = destroy
-    command = "kubectl delete application root -n argocd --ignore-not-found=true --timeout=60s || true"
+    command = "kubectl delete application root -n argocd --ignore-not-found=true --timeout=180s || true"
   }
 
   depends_on = [helm_release.argocd, helm_release.alb_controller]

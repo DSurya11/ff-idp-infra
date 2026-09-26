@@ -18,10 +18,16 @@ step() { echo; echo "==> $*"; }
 # --- 0. Kubernetes-created ALBs --------------------------------------------------
 # The ALB controller creates ALBs/target groups/ENIs outside Terraform. If they still
 # exist when 30-cluster is destroyed, the VPC/subnets/SGs cannot be deleted.
-step "[0/3] Deleting Ingresses so the ALB controller removes its ALB..."
+step "[0/3] Removing Argo CD apps so the ALB controller deletes its ALB..."
 if aws eks describe-cluster --name "$CLUSTER" --region "$REGION" >/dev/null 2>&1; then
   aws eks update-kubeconfig --name "$CLUSTER" --region "$REGION" >/dev/null 2>&1
-  kubectl delete ingress --all --all-namespaces --timeout=120s 2>&1 || echo "WARN: ingress delete failed/timed out; falling back to direct ALB delete"
+  # Argo CD selfHeal would recreate a deleted Ingress, so delete the root Application
+  # instead: its finalizer cascades to the children, which delete their resources
+  # (Ingress included) while the ALB controller is still running.
+  kubectl delete application root -n argocd --ignore-not-found --timeout=300s 2>&1 \
+    || echo "WARN: root app delete timed out; falling back to direct deletes"
+  kubectl delete ingress --all --all-namespaces --timeout=120s 2>&1 \
+    || echo "WARN: ingress delete failed/timed out; falling back to direct ALB delete"
 else
   echo "Cluster not found - skipping kubectl cleanup."
 fi

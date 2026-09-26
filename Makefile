@@ -60,8 +60,8 @@ up:
 	terraform -chdir=40-platform apply -auto-approve
 	@echo ""
 	@echo "==> Waiting for Argo CD root app to be Healthy..."
-	kubectl wait --for=condition=Healthy application/root \
-	  -n argocd --timeout=300s || true
+	kubectl wait --for=jsonpath='{.status.health.status}'=Healthy application/root \
+	  -n argocd --timeout=600s || echo "WARN: root app not Healthy yet - check: kubectl get applications -n argocd"
 	@echo ""
 	@echo "╔══════════════════════════════════════════════╗"
 	@echo "║         Environment ready!                   ║"
