@@ -54,6 +54,8 @@ terraform {
     key     = "40-platform/terraform.tfstate"
     region  = "ap-south-1"
     profile = "idp"
+    # S3-native state lock (Terraform >= 1.10): a .tflock object next to the state.
+    use_lockfile = true
   }
 }
 
@@ -251,9 +253,9 @@ resource "kubernetes_namespace" "argocd" {
 }
 
 resource "helm_release" "argocd" {
-  name             = "argocd"
-  repository       = "https://argoproj.github.io/argo-helm"
-  chart            = "argo-cd"
+  name       = "argocd"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argo-cd"
   # 10.9.2 = Argo CD v3.5.3. Was 7.7.3 (v2.13), whose embedded Kubernetes schema predates
   # k8s 1.33 and broke server-side diffs against the 1.35 cluster (Finding 38).
   # Keep this within the Kubernetes versions Argo CD tests against when bumping EKS.

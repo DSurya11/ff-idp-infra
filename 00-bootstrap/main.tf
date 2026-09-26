@@ -112,9 +112,10 @@ resource "aws_s3_bucket_ownership_controls" "tfstate" {
 }
 
 # ─── DynamoDB state lock table ───────────────────────────────────────────────
-# Note: Terraform >= 1.10 supports native S3 locking (use_lockfile = true),
-# making DynamoDB optional. We create it anyway for compatibility with older
-# Terraform versions and as an explicit portfolio demonstration.
+# NOT USED for locking: no backend ever referenced it, so state was unlocked until
+# 2026-09-27. All backends now use S3-native locking (use_lockfile = true, Terraform
+# >= 1.10), which is HashiCorp's recommended replacement (dynamodb_table is deprecated).
+# Kept only because it is free (PAY_PER_REQUEST, idle = $0); safe to remove later.
 
 resource "aws_dynamodb_table" "tfstate_locks" {
   name         = "idp-tf-locks"

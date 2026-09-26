@@ -1,6 +1,6 @@
 ---
 # Feature Flag IDP — Master Handover Document
-> Last updated: 2026-09-26 (Session 5)
+> Last updated: 2026-09-27 (Session 6: Step 30 built, ff-idp -> idp rename, state locking, CI hardening)
 > Purpose: Self-contained context for any AI/agent to continue this project from any point.
 > Nothing should need to be re-verified or re-asked if this document is read first.
 
@@ -344,7 +344,7 @@ terraform {
     key            = "XX-layername/terraform.tfstate"
     region         = "ap-south-1"
     profile        = "idp"
-    dynamodb_table = "idp-tf-locks"
+    use_lockfile   = true   # S3-native lock (Finding 49); the DynamoDB table is unused
   }
 }
 ```
@@ -723,7 +723,9 @@ resource "aws_db_instance" "postgres" {
 **Finding 45: Step 28 proof (final run).** Under 20 rps constant k6 load through the ALB: GitOps rollout (push -> Argo) + node group surge 2->3 + drain of a node holding an API pod: **28,800 requests, 0 failed, p95 43.8 ms**. The drain logged "Cannot evict pod as it would violate the pod's disruption budget" x5 - the PDB held the second replica until its replacement was Ready. HPA burst (150 iterations/s = 300 req/s): CPU 26% -> 329% of request, scaled 3 -> 4 (max) in ~30 s, **53,602 requests, 0 failed, p95 73 ms**. Mechanisms: maxUnavailable 0 / maxSurge 1, ALB pod readiness gate (namespace label), preStop sleep 20s > ALB deregistration delay 10s, PDB minAvailable 1, HPA owns replicas (none in Git). Reproduce: `tests/rollout-load.js` (logs every failure with timestamp + status).
 **Finding 46: Backstage image failed the Trivy gate - 27 HIGH/CRITICAL, none in app code.** Sources: (a) the node base image's global npm (bundled tar/brace-expansion/ip-address) - npm is never used at runtime, so the Dockerfile now deletes npm/npx; (b) tar 6.2.1 under node-gyp 10 + cacache (18 findings; fixes exist only in tar 7) - the scaffold pins node-gyp ^10, bumped to ^13 (tar ^7, no cacache); (c) protobufjs 7.5.5 via @google-cloud/firestore - `yarn up -R protobufjs` -> 7.6.6. Result: Trivy clean. Lesson: read the file PATH in Trivy output before touching dependencies - most findings were in tooling the app never loads.
 **Finding 47: RDS PostgreSQL 16 enforces SSL (rds.force_ssl=1).** psycopg2 negotiates SSL by default (the API just works); Node's `pg` does not. Backstage config sets `ssl.ca` to the bundled RDS global CA (verified TLS, not rejectUnauthorized:false).
-**Finding 48: Duplicate GitHub Actions runs + immutable ECR tags.** GitHub started two runs for one push; the second failed pushing the same immutable tag. idp-portal CI now has `concurrency: ci-${{ github.sha }}` with cancel-in-progress. feature-flag-service CI has the same latent issue (and "Re-run" of a green build would also fail on the immutable tag).
+**Finding 48: Duplicate GitHub Actions runs + immutable ECR tags.** GitHub started two runs for one push; the second failed pushing the same immutable tag. idp-portal CI now has `concurrency: ci-${{ github.sha }}` with cancel-in-progress. feature-flag-service CI has the same latent issue (and "Re-run" of a green build would also fail on the immutable tag). FIXED 2026-09-27 in both repos: concurrency per event+SHA, "image already in ECR" check (re-runs skip the push), and a rebase-and-retry loop for the bot push to idp-gitops (several CI bots now push there). feature-flag-service build also moved to the native `ubuntu-24.04-arm` runner (no QEMU).
+**Finding 49: Terraform state was never locked.** The DynamoDB lock table existed, but no backend referenced it (`dynamodb_table` was only in this doc's example), so two concurrent applies could have corrupted state. Found during the rename migration. All backends now set `use_lockfile = true` (S3-native lock, TF >= 1.10; `dynamodb_table` is deprecated). Verified: a second concurrent plan fails with "Error acquiring the state lock".
+**Finding 50: Renaming a "permanent" layer is a state migration, not a find-and-replace.** S3 buckets and security groups cannot be renamed; IAM roles are replaced. Done as: `state rm` old bucket/table (kept as backup) -> apply new -> `s3 sync` state -> `init -reconfigure` per layer -> no-change plans prove code == AWS. The GitHub OIDC `sub` claim contains the repo NAME, so renaming a repo breaks CI until the trust policy matches (IDs are stable, names are not).
 **Finding 27: Spend audit.** As of 2026-09-26, ~$1 of credits used over 3 sessions, consistent with the ~$0.73/session model. Cost Explorer lags ~24h and shows ~$0; use Billing > Credits for the real balance. All regions checked empty.
 
 ---
@@ -867,8 +869,9 @@ Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itse
 2. Check: `kubectl get applications -n argocd` all Synced/Healthy; ALB: `kubectl get ingress -n feature-flag-dev`.
 3. No manual secret or migration steps any more (JWT generated, alembic Job automatic).
 4. Open Backstage: `kubectl port-forward svc/idp-portal -n backstage 7007:7007` -> http://localhost:7007 (guest sign-in).
-5. NEXT WORK: Step 30 - Software Templates. Needs a GitHub App for Backstage (repo create + PRs), private key into idp/backstage-github-app (created by 20-data, placeholder today).
-5. `make down` must exit 0 and you must SEE it finish (Finding 37). Re-run it if interrupted.
+5. NEXT WORK (planned for 2026-09-28): Step 30 live demo - `~/.idp` now has all three GitHub App files, so `make up` loads idp/backstage-github-app automatically. Run the python-service template for `hello-svc` -> CI green -> merge the idp-gitops PR -> `http://<ALB>/hello-svc/` -> record the form-to-running time. Then new templates (feature-flag helper in the skeleton, Template 2 `add-feature-flag`).
+6. After the first successful `make up` on the new bucket: delete the old backups `ff-idp-tfstate-693906847772` (versioned: delete all versions) and `ff-idp-tf-locks`.
+7. `make down` must exit 0 and you must SEE it finish (Finding 37). Re-run it if interrupted.
 
 ---
 

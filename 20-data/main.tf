@@ -39,6 +39,8 @@ terraform {
     key     = "20-data/terraform.tfstate"
     region  = "ap-south-1"
     profile = "idp"
+    # S3-native state lock (Terraform >= 1.10): a .tflock object next to the state.
+    use_lockfile = true
   }
 }
 
