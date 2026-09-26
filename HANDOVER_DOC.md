@@ -842,7 +842,8 @@ Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itse
 1. `aws sts get-caller-identity --profile ff-idp`, check `curl -s https://checkip.amazonaws.com` matches `allowed_cidr` in 30-cluster/variables.tf, then `make up` (~21-27 min). It waits for the root app to be Healthy.
 2. Check: `kubectl get applications -n argocd` all Synced/Healthy; ALB: `kubectl get ingress -n feature-flag-dev`.
 3. No manual secret or migration steps any more (JWT generated, alembic Job automatic).
-4. NEXT WORK: Phase D - Step 29 (Backstage in cluster). Watch memory: 2x t4g.small is already at ~60-85% of requests; Backstage needs ~512Mi+. Options: drop the unused EBS CSI add-on, or 3 nodes (~+$0.017/hr).
+4. Open Backstage: `kubectl port-forward svc/idp-portal -n backstage 7007:7007` -> http://localhost:7007 (guest sign-in).
+5. NEXT WORK: Step 30 - Software Templates. Needs a GitHub App for Backstage (repo create + PRs), private key into ff-idp/backstage-github-app (created by 20-data, placeholder today).
 5. `make down` must exit 0 and you must SEE it finish (Finding 37). Re-run it if interrupted.
 
 ---
@@ -1049,7 +1050,8 @@ k6 load during rolling update. Zero failed requests required.
 
 ### PHASE D — The Actual IDP
 
-#### Step 29 - Backstage in cluster: BUILT (2026-09-26), live verification in progress
+#### Step 29 - Backstage in cluster: DONE and VERIFIED (2026-09-27)
+Verified live: `make up` alone deployed it (Argo `idp-portal` Synced/Healthy); Ready ~30s after start; catalog DB migrations ran on RDS over verified TLS; via port-forward: UI HTTP 200, `/.backstage/health/v1/readiness` ok, guest sign-in ok; catalog contains `feature-flag-service` (owner DSurya11) + resources feature-flag-postgres / feature-flag-redis, read live from GitHub. Node memory after removing EBS CSI and adding Backstage: 52-57% used. Expected warnings: kubernetes plugin unconfigured (Step 31), permissions disabled.
 - Repo: github.com/DSurya11/idp-portal (public; native ubuntu-24.04-arm runners, ~3 min build). CI: install/tsc/build -> arm64 image -> ECR `idp-portal` (15-registry, keep 5) via the same OIDC role (exact subject added) -> Trivy gate -> ff-idp-ci-bot bumps `apps/idp-portal/overlays/dev`.
 - env-config: `apps/idp-portal` (namespace `backstage`, 1 replica, 512Mi request / 1Gi limit, DB creds from ff-idp/db-creds via ESO), Argo Application `idp-portal` (wave 1).
 - ACCESS: NO Ingress. `kubectl port-forward svc/idp-portal -n backstage 7007:7007` -> http://localhost:7007. Reason: Backstage needs a fixed baseUrl and the ALB hostname changes every session; guest sign-in is acceptable only while unexposed. User asked for "only me" access - port-forward is stricter than an IP allowlist.
