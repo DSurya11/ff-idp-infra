@@ -160,7 +160,9 @@ resource "helm_release" "eso" {
     value = data.terraform_remote_state.cluster.outputs.eso_irsa_role_arn
   }
 
-  depends_on = [kubernetes_namespace.external_secrets]
+  # The ALB controller registers a mutating webhook on ALL Services; until its pod is
+  # ready, creating any Service (including ESO's) fails with "no endpoints available".
+  depends_on = [kubernetes_namespace.external_secrets, helm_release.alb_controller]
 }
 
 # =============================================================================
@@ -357,7 +359,9 @@ resource "null_resource" "argocd_root_app" {
           path: "."
           directory:
             recurse: false
-            exclude: "*.yaml.example"
+            # Flat repo until Step 27: only the EKS/dev manifests. The rest (kind manifests,
+            # Kyverno, ServiceMonitor) need CRDs or a different cluster.
+            include: "{namespace-dev,cluster-secret-store,externalsecret-feature-flag-dev,eks-api-deployment,eks-api-service,eks-api-ingress}.yaml"
         destination:
           server: https://kubernetes.default.svc
           namespace: argocd
@@ -390,7 +394,9 @@ resource "null_resource" "argocd_root_app" {
           path: "."
           directory:
             recurse: false
-            exclude: "*.yaml.example"
+            # Flat repo until Step 27: only the EKS/dev manifests. The rest (kind manifests,
+            # Kyverno, ServiceMonitor) need CRDs or a different cluster.
+            include: "{namespace-dev,cluster-secret-store,externalsecret-feature-flag-dev,eks-api-deployment,eks-api-service,eks-api-ingress}.yaml"
         destination:
           server: https://kubernetes.default.svc
           namespace: argocd
@@ -399,9 +405,10 @@ resource "null_resource" "argocd_root_app" {
         # Enabling auto-sync on the flat repo causes failures because the raw
         # manifests reference CRDs (ServiceMonitor, ClusterPolicy) not yet installed.
         # After Step 27: re-enable automated sync with prune + selfHeal.
-        syncOptions:
-          - CreateNamespace=true
-          - ServerSideApply=true
+        syncPolicy:
+          syncOptions:
+            - CreateNamespace=true
+            - ServerSideApply=true
       YAML
     EOT
   }

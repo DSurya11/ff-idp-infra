@@ -280,6 +280,9 @@ ff-idp-infra/
   │                 Backend: S3.
   │                 DESTROYED each session (Option B).
   │
+  15-registry/      ECR repo + lifecycle policy. PERMANENT (not in make up/down). Apply once by hand:
+  │                 terraform -chdir=15-registry init && terraform -chdir=15-registry apply
+  │
   30-cluster/       EKS cluster, managed node group (ON_DEMAND t4g.small), NAT Gateway, IRSA roles,
   │                 ECR repos, ElastiCache Valkey.
   │                 Backend: S3.
@@ -676,6 +679,14 @@ resource "aws_db_instance" "postgres" {
 **Finding 24: Orphaned RDS final snapshot.** `ff-idp-postgres-final-2026-09-22` (20GB, ~$2.62/mo) was left by the first destroy, before `skip_final_snapshot=true`. `make verify-empty` reported OK because the Tagging API does not surface it. Deleted manually 2026-09-26.
 **Finding 25: Tag-based verification is not enough.** Snapshots, controller-created ALBs, ENIs and PVC volumes are not reliably visible via `resourcegroupstaggingapi`. `verify-empty.py` now ALSO queries each service directly (EKS, EC2, NAT, EIP, ELB, RDS + snapshots, ElastiCache, EBS + snapshots, Secrets, VPC endpoints, ECR, CloudWatch logs).
 **Finding 26: `|| true` hid failed destroys.** `make down` now runs `scripts/down.sh`, which continues through all layers but exits non-zero and lists what failed. Never close the laptop on a non-zero exit.
+**Finding 28: GitHub OIDC `sub` claim now embeds immutable IDs.** CI failed with "Not authorized to perform sts:AssumeRoleWithWebIdentity" for days. CloudTrail (ap-south-1, `AssumeRoleWithWebIdentity`) showed the real subject: `repo:DSurya11@162597218/Feature-Flag-Service@1368152185:ref:refs/heads/main`. The old `repo:OWNER/REPO:...` form (and a hand-made wildcard) never matched. Fixed in `00-bootstrap` with the exact new subject, no wildcard. The live role had also drifted from Terraform (console edit) - Terraform now owns it again. Debug tip: read the principal in the failed CloudTrail event.
+**Finding 29: ECR must not live in a destroyed layer.** It was in 30-cluster, so each `make down` either failed (non-empty repo) or, with force_delete, wiped all images. Moved to permanent layer `15-registry` (NOT part of make up/down; apply once). CI pushes there.
+**Finding 30: ALB controller was never installed by any code.** Session 4 must have installed it by hand. Now a `helm_release` in 40-platform (chart 3.5.0, IAM policy v3.5.0). ESO must depend on it: the controller's mutating webhook covers ALL Services, so installing anything in parallel fails with "no endpoints available".
+**Finding 31: Prefix delegation works.** `vpc-cni` addon with `ENABLE_PREFIX_DELEGATION` + `before_compute`, plus kubelet `maxPods: 110` via `cloudinit_pre_nodeadm`: both nodes report 110 allocatable pods (was 11).
+**Finding 32: Trivy could not scan the pushed image.** buildx pushes without loading into the local daemon, and the image is arm64 on an amd64 runner. Fix: `TRIVY_USERNAME/PASSWORD` from `aws ecr get-login-password`, `TRIVY_PLATFORM=linux/arm64`, and `--provenance=false` on the build.
+**Finding 33: The CI bot cannot update env-config.** `actions/create-github-app-token` returns 404 for repo `feature-flag-service-env-config`: the `ff-idp-ci-bot` GitHub App is not installed on that repo (or the App ID/key secrets do not match it). OPEN - fix in GitHub settings (Settings > Developer settings > GitHub Apps > ff-idp-ci-bot > Install App). Until then the image SHA in `eks-api-deployment.yaml` is bumped by hand.
+**Finding 34: Fresh RDS has no schema.** Migrations are not run by the app. After `make up`: `kubectl exec -n feature-flag-dev deploy/feature-flag-api -- sh -c "cd /app; alembic upgrade head"`. TODO: automate (Argo PreSync hook Job or initContainer).
+**Finding 35: Argo root app YAML bug.** `syncOptions` must be under `spec.syncPolicy`, not `spec`. Root app is manual-sync and scoped by `directory.include` to the EKS manifests until Step 27.
 **Finding 27: Spend audit.** As of 2026-09-26, ~$1 of credits used over 3 sessions, consistent with the ~$0.73/session model. Cost Explorer lags ~24h and shows ~$0; use Billing > Credits for the real balance. All regions checked empty.
 
 ---
@@ -795,14 +806,22 @@ kubectl get secret feature-flag-secrets -n feature-flag-dev \
 
 ---
 
+## 16a. Step 21 A/B RESULT (measured 2026-09-26, RDS in VPC, same code)
+| Path | Neon over WAN (Step 16) | RDS in VPC, server-side (in-pod) | Via ALB from laptop |
+|---|---|---|---|
+| `/evaluate` p95 | ~970 ms | 20 ms (DB miss) / 30 ms (Redis hit) | ~58 ms |
+DB miss p50 8.3 ms vs Redis hit p50 3.9 ms => Postgres fetch ~4 ms. ~48 ms floor via ALB = laptop-to-ALB RTT (`/health` identical). Conclusion: WAN RTT/TLS/pooler was the root cause, NOT SQLAlchemy session handling. Caveat: cluster also changed (kind -> EKS); the DB location is the dominant change. Reproduce: `test_latency.py` (header explains in-pod vs ALB modes). Neon (90-legacy-neon) is no longer needed for the experiment.
+
+---
+
 ## 16b. Next Session Checklist (Session 6)
-1. `aws sts get-caller-identity --profile ff-idp` then `make up`.
-2. Confirm pods schedulable (max-pods 110) and the API pod starts (psycopg2 URL). Fixes are uncommitted - commit them first.
-3. Update `ff-idp/jwt-secret` in Secrets Manager (never echo it).
-4. Finish Step 25: `curl -sI http://<alb-dns>/health` = 200, exactly one ALB.
-5. Run `test_latency.py` for the Neon vs RDS A/B.
-6. `make down` must exit 0 (it runs verify-empty itself). If it exits non-zero, fix before closing the laptop.
-7. Check Billing > Credits for the real balance.
+Steps 23, 24, 25 are VERIFIED (2026-09-26): 2 nodes/110 pods, ESO recreates a deleted secret in ~5s with the same hash, ALB `/health` = 200 with exactly one ALB.
+1. `aws sts get-caller-identity --profile ff-idp`, then `make up` (15-registry is permanent and already applied; images persist).
+2. Sync the app: `kubectl patch application root -n argocd --type merge -p '{"operation":{"sync":{"syncOptions":["CreateNamespace=true","ServerSideApply=true"]}}}'`
+3. Set `ff-idp/jwt-secret` (JSON key `JWT_SECRET_KEY`, NOT `secret`) - generate randomly, never echo. Then run alembic (Finding 34).
+4. FIX the GitHub App install on env-config (Finding 33), then push a commit to Feature-Flag-Service and confirm the bot commits the SHA.
+5. Next steps: Step 26/27 (app-of-apps + env-config restructure; re-enable automated sync), Step 28 (HPA/PDB/rolling update).
+6. `make down` must exit 0 (it runs verify-empty). Check Billing > Credits.
 
 ---
 
