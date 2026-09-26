@@ -197,10 +197,12 @@ orphaned snapshots. Must be true. Set and verified in 20-data/main.tf.
 | [idp-portal](https://github.com/DSurya11/idp-portal) (public) | `~/projects/idp-portal` | Backstage 1.54 app, its CI, and `templates/python-service/` |
 | [feature-flag-service](https://github.com/DSurya11/feature-flag-service) | `~/projects/feature-flag-service` | The flag API (FastAPI, Alembic), its CI, `catalog-info.yaml` |
 
-Untracked on purpose (do not commit): idp-infra `HANDOVER_UPDATE.md`, `STEP_23_INTERVIEW_DEEP_DIVE.md`,
-`parse_transcript.py`, `transcript_summary.txt`, `update_handover.py`; idp-portal `fix_all.js`,
-`fix_config.js`, `scrape.js`, `update_config.js`; feature-flag-service `kubectl`, `terraform/*`,
-`tests/test_e2e.sh` (old kind-era script, rewrite is Step 36).
+Cleaned 2026-09-27: one-off helper scripts, old transcripts, duplicate kubectl/terraform
+binaries, committed test `.db` files, the Step 11 `terraform/` folder in feature-flag-service
+(now idp-infra/90-legacy-neon) and Backstage's demo entities/template are gone. The only
+untracked file left is feature-flag-service `tests/test_e2e.sh` (kind-era, input for Step 36).
+Interview write-ups live outside the repos in `~/projects/to read/`.
+Follow-up: feature-flag-service README still describes the kind/Neon/GHCR setup (Section 18).
 
 ### idp-gitops layout
 ```
