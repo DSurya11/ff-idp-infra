@@ -1063,7 +1063,15 @@ Verified live: `make up` alone deployed it (Argo `idp-portal` Synced/Healthy); R
 - Second DATABASE on same RDS instance (`CREATE DATABASE backstage_db`)
 - Replace GitHub PAT with GitHub App, store in ff-idp/backstage-github-app secret
 
-#### Step 30 — Software Templates (The Whole Point)
+#### Step 30 - Software Templates: BUILT (2026-09-27), live demo pending
+- GitHub App `ff-idp-backstage` (App ID 5088974, installed on ALL repos of DSurya11; administration/contents/workflows/pull_requests write). Actions:read not granted yet (needed for Step 31).
+- Credentials live on the laptop in `~/.ff-idp/` (700/600): `backstage-app.env` (APP_ID, CLIENT_ID), `backstage-app.pem`, `backstage-client-secret`. `make up` runs `scripts/load-local-secrets.sh` -> ff-idp/backstage-github-app (stdin only; keeps $0 idle vs $0.40/mo permanent secret) -> ESO -> Backstage env.
+- Template `idp-portal/templates/python-service` (loaded from GitHub URL): fetch skeleton -> publish:github (public repo) -> render env-config slice pinned to `steps.publish.output.commitHash` -> publish:github:pull-request -> catalog:register.
+- Generated repo CI uses role `ff-idp-service-ci`: trust `repo:DSurya11@162597218/*` main only, ECR `svc/*` only (creates its repo on first run). Deliberate exception to the exact-subject rule (user decision).
+- Golden path bakes in Step 28: maxUnavailable 0, preStop 20s, readiness gate, PDB, HPA (wave 3), PriorityClass, zone spread, non-root uid 10001, uvicorn keep-alive 75s > ALB 60s. Route: `/<name>` on the shared ALB (group.order 10; feature-flag-api catch-all moved to 1000).
+- Skeleton verified locally: renders, builds, serves /health and /<name>/, uid 10001, Trivy clean (after pinning starlette 1.7.0 - fastapi 0.118 pulled starlette 0.48 with 3 HIGH).
+
+#### Step 30 — Software Templates (The Whole Point) (original plan)
 **Template 1:** `create-python-service` — new repo + CI + env-config PR + catalog register
 **Template 2:** `add-feature-flag` — domain-specific golden path
 
