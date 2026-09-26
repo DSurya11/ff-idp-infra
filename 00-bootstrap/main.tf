@@ -39,7 +39,7 @@ terraform {
 
 provider "aws" {
   region  = "ap-south-1"
-  profile = "ff-idp"
+  profile = "idp"
 
   default_tags {
     tags = {

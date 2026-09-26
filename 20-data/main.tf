@@ -38,13 +38,13 @@ terraform {
     bucket  = "idp-tfstate-693906847772"
     key     = "20-data/terraform.tfstate"
     region  = "ap-south-1"
-    profile = "ff-idp"
+    profile = "idp"
   }
 }
 
 provider "aws" {
   region  = "ap-south-1"
-  profile = "ff-idp"
+  profile = "idp"
 
   default_tags {
     tags = {
@@ -64,7 +64,7 @@ data "terraform_remote_state" "network" {
     bucket  = "idp-tfstate-693906847772"
     key     = "10-network/terraform.tfstate"
     region  = "ap-south-1"
-    profile = "ff-idp"
+    profile = "idp"
   }
 }
 
@@ -221,7 +221,7 @@ resource "aws_secretsmanager_secret" "backstage_github_app" {
 resource "aws_secretsmanager_secret_version" "backstage_github_app" {
   secret_id = aws_secretsmanager_secret.backstage_github_app.id
   secret_string = jsonencode({
-    # Placeholders only. Real values are loaded from ~/.ff-idp by
+    # Placeholders only. Real values are loaded from ~/.idp by
     # scripts/load-local-secrets.sh during `make up` (ignore_changes below keeps them).
     appId        = "REPLACE_ME"
     clientId     = "REPLACE_ME"

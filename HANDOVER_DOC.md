@@ -21,7 +21,8 @@ old names.
 | AWS prefix `ff-idp-*`, secrets `ff-idp/*`, tag `Project=ff-idp`, ALB group `ff-idp` | `idp-*`, `idp/*`, `Project=idp`, `idp` |
 | state bucket `ff-idp-tfstate-693906847772`, table `ff-idp-tf-locks` | `idp-tfstate-693906847772`, `idp-tf-locks` |
 | CI roles `ff-idp-github-ci`, `ff-idp-service-ci` | `idp-github-ci`, `idp-service-ci` |
-| Pending (user-owned): AWS profile `ff-idp`, IAM user `ff-idp-admin`, `~/.ff-idp`, GitHub Apps `ff-idp-ci-bot` / `ff-idp-backstage` | `idp`, `idp-admin`, `~/.idp`, `idp-ci-bot` / `idp-backstage` |
+| AWS profile `ff-idp`, IAM user `ff-idp-admin`, laptop secrets dir `~/.ff-idp` | `idp`, `idp-admin`, `~/.idp` |
+| GitHub Apps `ff-idp-ci-bot`, `ff-idp-backstage` | not renamed (display names only; CI uses the App ID) |
 
 The old state bucket and lock table were detached from 00-bootstrap state (not destroyed) as a
 backup. Delete them after the first successful `make up` on the new bucket. `verify-empty`
@@ -35,8 +36,8 @@ scans both `Project=idp` and `Project=ff-idp` tags.
 |---|---|
 | AWS Account ID | `693906847772` |
 | AWS Account Name | D S S V Raju |
-| IAM User | `ff-idp-admin` |
-| IAM User ARN | `arn:aws:iam::693906847772:user/ff-idp-admin` |
+| IAM User | `idp-admin` |
+| IAM User ARN | `arn:aws:iam::693906847772:user/idp-admin` |
 | AWS CLI Profile | `idp` |
 | AWS CLI Version | `aws-cli/2.36.49` |
 | Default Region | `ap-south-1` (Mumbai) |
@@ -51,8 +52,8 @@ scans both `Project=idp` and `Project=ff-idp` tags.
 
 **Verify identity before any session:**
 ```bash
-aws sts get-caller-identity --profile ff-idp
-# Must show: Account: 693906847772, Arn: arn:aws:iam::693906847772:user/ff-idp-admin
+aws sts get-caller-identity --profile idp
+# Must show: Account: 693906847772, Arn: arn:aws:iam::693906847772:user/idp-admin
 # NEVER operate as root
 ```
 
@@ -239,12 +240,12 @@ idp-gitops/
 ### Infrastructure Phase (Steps 17–23) 🚧 IN PROGRESS
 
 #### Step 17 — AWS Account Hygiene ✅
-- IAM user ff-idp-admin confirmed (NEVER root)
+- IAM user idp-admin confirmed (NEVER root)
 - Budget alerts confirmed:
   - `My Zero-Spend Budget`: $1/month threshold
   - `Total-180-of-200-Alert`: $180 cumulative
 - AWS CLI profile idp working
-- Verified: `aws sts get-caller-identity --profile ff-idp` → Account 693906847772
+- Verified: `aws sts get-caller-identity --profile idp` → Account 693906847772
 
 #### Step 18 — Terraform Bootstrap (00-bootstrap) ✅
 Applied 2026-09-22. Resources: 9 created. State: LOCAL (intentional).
@@ -342,7 +343,7 @@ terraform {
     bucket         = "idp-tfstate-693906847772"
     key            = "XX-layername/terraform.tfstate"
     region         = "ap-south-1"
-    profile        = "ff-idp"
+    profile        = "idp"
     dynamodb_table = "idp-tf-locks"
   }
 }
@@ -352,7 +353,7 @@ terraform {
 ```hcl
 provider "aws" {
   region  = "ap-south-1"
-  profile = "ff-idp"
+  profile = "idp"
   default_tags {
     tags = {
       Project     = "idp"
@@ -382,7 +383,7 @@ What it does (in order):
 [2/4] terraform init -input=false + apply -auto-approve 30-cluster  (~12-15 min)
       Creates: EKS cluster, NAT Gateway, ElastiCache Valkey, ECR repos, IRSA roles
 
-[3/4] aws eks update-kubeconfig --name idp-cluster --region ap-south-1 --profile ff-idp
+[3/4] aws eks update-kubeconfig --name idp-cluster --region ap-south-1 --profile idp
 
 [4/4] terraform init -input=false + apply -auto-approve 40-platform (~3-5 min)
       Creates: Argo CD
@@ -396,7 +397,7 @@ What it does (in order):
 aws secretsmanager put-secret-value \
   --secret-id idp/jwt-secret \
   --secret-string '{"secret":"your-real-jwt-secret-here"}' \
-  --profile ff-idp
+  --profile idp
 ```
 
 ### make down (session end — ALWAYS run before closing laptop)
@@ -862,7 +863,7 @@ Build+teardown overhead is ~43 min of billing (~$0.20) even for a 5-minute test.
 
 ## 16b. Next Session Checklist
 Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itself -> work -> `make down`.
-1. `aws sts get-caller-identity --profile ff-idp`, check `curl -s https://checkip.amazonaws.com` matches `allowed_cidr` in 30-cluster/variables.tf, then `make up` (~21-27 min). It waits for the root app to be Healthy.
+1. `aws sts get-caller-identity --profile idp`, check `curl -s https://checkip.amazonaws.com` matches `allowed_cidr` in 30-cluster/variables.tf, then `make up` (~21-27 min). It waits for the root app to be Healthy.
 2. Check: `kubectl get applications -n argocd` all Synced/Healthy; ALB: `kubectl get ingress -n feature-flag-dev`.
 3. No manual secret or migration steps any more (JWT generated, alembic Job automatic).
 4. Open Backstage: `kubectl port-forward svc/idp-portal -n backstage 7007:7007` -> http://localhost:7007 (guest sign-in).
@@ -964,7 +965,7 @@ This is your "mean time to environment" metric for the README.
 kubectl get nodes -o wide
 # Must show 2 nodes in DIFFERENT AZs with PRIVATE IPs
 
-aws eks describe-cluster --name idp-cluster --profile ff-idp --query 'cluster.version'
+aws eks describe-cluster --name idp-cluster --profile idp --query 'cluster.version'
 # Must match standard-support version
 
 # After Step 23, full green CI run will work — ECR repo now exists
@@ -1039,7 +1040,7 @@ metadata:
 curl -sI http://<alb-dns>/health
 # HTTP/1.1 200
 
-aws elbv2 describe-load-balancers --profile ff-idp \
+aws elbv2 describe-load-balancers --profile idp \
   --query 'LoadBalancers[?contains(LoadBalancerName, `idp`)].LoadBalancerArn'
 # Must show EXACTLY ONE ALB for all environments
 ```
@@ -1088,7 +1089,7 @@ Verified live: `make up` alone deployed it (Argo `idp-portal` Synced/Healthy); R
 
 #### Step 30 - Software Templates: BUILT (2026-09-27), live demo pending
 - GitHub App `ff-idp-backstage` (App ID 5088974, installed on ALL repos of DSurya11; administration/contents/workflows/pull_requests write). Actions:read not granted yet (needed for Step 31).
-- Credentials live on the laptop in `~/.ff-idp/` (700/600): `backstage-app.env` (APP_ID, CLIENT_ID), `backstage-app.pem`, `backstage-client-secret`. `make up` runs `scripts/load-local-secrets.sh` -> idp/backstage-github-app (stdin only; keeps $0 idle vs $0.40/mo permanent secret) -> ESO -> Backstage env.
+- Credentials live on the laptop in `~/.idp/` (700/600): `backstage-app.env` (APP_ID, CLIENT_ID), `backstage-app.pem`, `backstage-client-secret`. `make up` runs `scripts/load-local-secrets.sh` -> idp/backstage-github-app (stdin only; keeps $0 idle vs $0.40/mo permanent secret) -> ESO -> Backstage env.
 - Template `idp-portal/templates/python-service` (loaded from GitHub URL): fetch skeleton -> publish:github (public repo) -> render env-config slice pinned to `steps.publish.output.commitHash` -> publish:github:pull-request -> catalog:register.
 - Generated repo CI uses role `idp-service-ci`: trust `repo:DSurya11@162597218/*` main only, ECR `svc/*` only (creates its repo on first run). Deliberate exception to the exact-subject rule (user decision).
 - Golden path bakes in Step 28: maxUnavailable 0, preStop 20s, readiness gate, PDB, HPA (wave 3), PriorityClass, zone spread, non-root uid 10001, uvicorn keep-alive 75s > ALB 60s. Route: `/<name>` on the shared ALB (group.order 10; feature-flag-api catch-all moved to 1000).

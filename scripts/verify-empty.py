@@ -37,7 +37,7 @@ FREE_SUBSTRINGS = (
     ":repository/",      # ECR (15-registry, permanent; ~$0.10/GB-month storage only)
 )
 
-PROFILE = "ff-idp"
+PROFILE = "idp"
 
 REGION = "ap-south-1"
 

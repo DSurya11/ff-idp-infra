@@ -53,7 +53,7 @@ terraform {
     bucket  = "idp-tfstate-693906847772"
     key     = "40-platform/terraform.tfstate"
     region  = "ap-south-1"
-    profile = "ff-idp"
+    profile = "idp"
   }
 }
 
@@ -61,7 +61,7 @@ terraform {
 
 provider "aws" {
   region  = "ap-south-1"
-  profile = "ff-idp"
+  profile = "idp"
 
   default_tags {
     tags = {
@@ -81,7 +81,7 @@ data "terraform_remote_state" "cluster" {
     bucket  = "idp-tfstate-693906847772"
     key     = "30-cluster/terraform.tfstate"
     region  = "ap-south-1"
-    profile = "ff-idp"
+    profile = "idp"
   }
 }
 

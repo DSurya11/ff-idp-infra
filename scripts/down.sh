@@ -7,7 +7,7 @@
 # still attempted, and the script exits non-zero so a leak cannot go unnoticed.
 set -uo pipefail
 
-export AWS_PROFILE="${AWS_PROFILE:-ff-idp}" AWS_PAGER=""
+export AWS_PROFILE="${AWS_PROFILE:-idp}" AWS_PAGER=""
 REGION=ap-south-1
 CLUSTER=idp-cluster
 cd "$(dirname "$0")/.."

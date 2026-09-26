@@ -17,7 +17,7 @@
 # EKS VERSION NOTE: 1.31-1.33 entered EXTENDED SUPPORT — $0.60/hr.
 #   This layer uses 1.35 (STANDARD SUPPORT — $0.10/hr, ends 2027-03-27).
 #   NEVER use a version with status EXTENDED_SUPPORT; check with:
-#     aws eks describe-cluster-versions --profile ff-idp
+#     aws eks describe-cluster-versions --profile idp
 #
 # NAT GATEWAY: Lives here (not in 10-network) so it is destroyed nightly.
 #   Left running permanently = $0.056/hr = $40/month. Not acceptable.
@@ -57,13 +57,13 @@ terraform {
     bucket  = "idp-tfstate-693906847772"
     key     = "30-cluster/terraform.tfstate"
     region  = "ap-south-1"
-    profile = "ff-idp"
+    profile = "idp"
   }
 }
 
 provider "aws" {
   region  = "ap-south-1"
-  profile = "ff-idp"
+  profile = "idp"
 
   default_tags {
     tags = {
@@ -83,7 +83,7 @@ data "terraform_remote_state" "network" {
     bucket  = "idp-tfstate-693906847772"
     key     = "10-network/terraform.tfstate"
     region  = "ap-south-1"
-    profile = "ff-idp"
+    profile = "idp"
   }
 }
 
@@ -95,7 +95,7 @@ data "terraform_remote_state" "data" {
     bucket  = "idp-tfstate-693906847772"
     key     = "20-data/terraform.tfstate"
     region  = "ap-south-1"
-    profile = "ff-idp"
+    profile = "idp"
   }
 }
 
@@ -263,7 +263,7 @@ module "eks" {
   # Enable IRSA — creates an OIDC provider for the cluster (required for ESO, ALB Controller, EBS CSI)
   enable_irsa = true
 
-  # Grant the IAM caller (ff-idp-admin) cluster-admin via EKS API access entries.
+  # Grant the IAM caller (idp-admin) cluster-admin via EKS API access entries.
   # Without this, kubectl fails with "server has asked for credentials" after creation.
   # The module uses API_AND_CONFIG_MAP auth mode; this adds an access entry automatically.
   enable_cluster_creator_admin_permissions = true

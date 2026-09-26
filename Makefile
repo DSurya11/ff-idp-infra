@@ -1,4 +1,4 @@
-PROFILE  := ff-idp
+PROFILE  := idp
 ACCOUNT  := 693906847772
 REGION   := ap-south-1
 

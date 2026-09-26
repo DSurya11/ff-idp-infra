@@ -23,8 +23,8 @@ sudo dnf install -y terraform
 terraform version
 
 # AWS CLI profile
-aws sts get-caller-identity --profile ff-idp
-# Must show: arn:aws:iam::693906847772:user/ff-idp-admin
+aws sts get-caller-identity --profile idp
+# Must show: arn:aws:iam::693906847772:user/idp-admin
 ```
 
 ## Session Lifecycle

@@ -4,16 +4,16 @@
 #
 # Why: under the destroy-every-session lifecycle, 20-data recreates every secret with
 # placeholders. A permanent secret would cost $0.40/month and break "$0 idle", so the
-# source of truth for these few values is ~/.ff-idp (mode 700/600), never Git or TF state.
+# source of truth for these few values is ~/.idp (mode 700/600), never Git or TF state.
 #
-#   ~/.ff-idp/backstage-app.env           APP_ID=..., CLIENT_ID=...  (not secret)
-#   ~/.ff-idp/backstage-app.pem           GitHub App private key
-#   ~/.ff-idp/backstage-client-secret     GitHub App client secret
+#   ~/.idp/backstage-app.env           APP_ID=..., CLIENT_ID=...  (not secret)
+#   ~/.idp/backstage-app.pem           GitHub App private key
+#   ~/.idp/backstage-client-secret     GitHub App client secret
 #
 # Values travel via stdin only; nothing is printed or written to disk.
 set -euo pipefail
-export AWS_PROFILE="${AWS_PROFILE:-ff-idp}" AWS_PAGER=""
-D="$HOME/.ff-idp"
+export AWS_PROFILE="${AWS_PROFILE:-idp}" AWS_PAGER=""
+D="$HOME/.idp"
 
 missing=()
 for f in backstage-app.env backstage-app.pem backstage-client-secret; do

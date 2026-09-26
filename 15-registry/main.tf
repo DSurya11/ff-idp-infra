@@ -29,13 +29,13 @@ terraform {
     bucket  = "idp-tfstate-693906847772"
     key     = "15-registry/terraform.tfstate"
     region  = "ap-south-1"
-    profile = "ff-idp"
+    profile = "idp"
   }
 }
 
 provider "aws" {
   region  = "ap-south-1"
-  profile = "ff-idp"
+  profile = "idp"
 
   default_tags {
     tags = {
