@@ -37,6 +37,55 @@ FREE_SUBSTRINGS = (
 
 PROFILE = "ff-idp"
 
+REGION = "ap-south-1"
+
+
+def aws_query(*args):
+    """Run an aws CLI read call; return (output_lines, error_or_None)."""
+    r = subprocess.run(
+        ["aws", *args, "--region", REGION, "--profile", PROFILE, "--output", "text"],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        return [], r.stderr.strip()
+    return [l for l in r.stdout.splitlines() if l.strip() and l.strip() != "None"], None
+
+
+# Direct, tag-independent checks. The tagging API misses snapshots, controller-created
+# ALBs, ENIs, PVC volumes, and lags on deletions - so ask each service directly.
+DIRECT_CHECKS = [
+    ("EKS cluster", ["eks", "list-clusters", "--query", "clusters[]"]),
+    ("EC2 instance", ["ec2", "describe-instances", "--query",
+                      "Reservations[].Instances[?State.Name!=`terminated`].[InstanceId,State.Name][]"]),
+    ("NAT gateway", ["ec2", "describe-nat-gateways", "--query",
+                     "NatGateways[?State!=`deleted`].[NatGatewayId,State]"]),
+    ("Elastic IP", ["ec2", "describe-addresses", "--query", "Addresses[].[PublicIp,AllocationId]"]),
+    ("Load balancer", ["elbv2", "describe-load-balancers", "--query", "LoadBalancers[].LoadBalancerName"]),
+    ("RDS instance", ["rds", "describe-db-instances", "--query", "DBInstances[].DBInstanceIdentifier"]),
+    ("RDS snapshot", ["rds", "describe-db-snapshots", "--query", "DBSnapshots[].DBSnapshotIdentifier"]),
+    ("ElastiCache group", ["elasticache", "describe-replication-groups", "--query",
+                           "ReplicationGroups[].ReplicationGroupId"]),
+    ("EBS volume", ["ec2", "describe-volumes", "--query", "Volumes[].[VolumeId,Size]"]),
+    ("EBS snapshot", ["ec2", "describe-snapshots", "--owner-ids", "self", "--query",
+                      "Snapshots[].SnapshotId"]),
+    ("Secrets Manager secret", ["secretsmanager", "list-secrets", "--query", "SecretList[].Name"]),
+    ("VPC endpoint", ["ec2", "describe-vpc-endpoints", "--query", "VpcEndpoints[].VpcEndpointId"]),
+    ("ECR repository", ["ecr", "describe-repositories", "--query", "repositories[].repositoryName"]),
+    ("CloudWatch log group", ["logs", "describe-log-groups", "--query", "logGroups[].logGroupName"]),
+]
+
+
+def direct_checks():
+    """Return billable findings from querying each service directly."""
+    findings = []
+    for label, args in DIRECT_CHECKS:
+        lines, err = aws_query(*args)
+        if err:
+            findings.append(f"{label}: CHECK FAILED ({err.splitlines()[-1]})")
+        findings += [f"{label}: {l}" for l in lines]
+    return findings
+
+
 def main():
     print("==> Scanning for billable ff-idp resources...")
     result = subprocess.run(
@@ -93,6 +142,9 @@ def main():
         print("\nINFO: The following free or pending-deletion resources were found (Cost: $0.00):")
         for arn in free_or_pending:
             print(f"  - {arn}")
+
+    print("\n==> Direct service checks (independent of tags)...")
+    billable += direct_checks()
 
     if not billable:
         print()

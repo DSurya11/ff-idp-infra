@@ -156,7 +156,7 @@ resource "aws_secretsmanager_secret_version" "db_creds" {
     host     = aws_db_instance.postgres.address
     port     = aws_db_instance.postgres.port
     dbname   = aws_db_instance.postgres.db_name
-    url      = "postgresql+asyncpg://${aws_db_instance.postgres.username}:${random_password.db.result}@${aws_db_instance.postgres.endpoint}/feature_flags"
+    url      = "postgresql+psycopg2://${aws_db_instance.postgres.username}:${random_password.db.result}@${aws_db_instance.postgres.endpoint}/feature_flags"
   })
 
   # Lifecycle: ignore_changes on secret_string so manual rotations in the console
@@ -212,8 +212,8 @@ resource "aws_secretsmanager_secret" "backstage_github_app" {
 resource "aws_secretsmanager_secret_version" "backstage_github_app" {
   secret_id = aws_secretsmanager_secret.backstage_github_app.id
   secret_string = jsonencode({
-    appId      = "REPLACE_ME"
-    privateKey = "REPLACE_ME"
+    appId         = "REPLACE_ME"
+    privateKey    = "REPLACE_ME"
     webhookSecret = "REPLACE_ME"
   })
 

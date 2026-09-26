@@ -80,17 +80,7 @@ down:
 	@echo "║   Cost after completion: $0.00/month         ║"
 	@echo "╚══════════════════════════════════════════════╝"
 	@echo ""
-	@echo "==> [1/3] Destroying platform layer (Argo CD + ESO)..."
-	terraform -chdir=40-platform destroy -auto-approve || true
-	@echo ""
-	@echo "==> [2/3] Destroying cluster layer (EKS + NAT + Valkey)..."
-	terraform -chdir=30-cluster destroy -auto-approve || true
-	@echo ""
-	@echo "==> [3/3] Destroying data layer (RDS + Secrets Manager)..."
-	terraform -chdir=20-data destroy -auto-approve || true
-	@echo ""
-	@echo "==> Verifying AWS is empty (must show OK before you close laptop)..."
-	$(MAKE) verify-empty
+	@./scripts/down.sh
 
 # ─── Cost safety check (must return OK before closing laptop) ─────────────────
 # Checks ALL tagged ff-idp resources still running.

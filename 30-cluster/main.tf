@@ -162,6 +162,7 @@ resource "aws_route" "private_nat_1b" {
 resource "aws_ecr_repository" "feature_flag_service" {
   name                 = "feature-flag-service"
   image_tag_mutability = "IMMUTABLE"
+  force_delete         = true # ephemeral lab: a non-empty repo must not block make down
 
   image_scanning_configuration {
     scan_on_push = true
@@ -292,7 +293,16 @@ module "eks" {
 
   cluster_addons = {
     vpc-cni = {
-      most_recent = true
+      most_recent    = true
+      before_compute = true # must be configured before nodes join, or max-pods stays at 11
+      # Prefix delegation: each ENI slot hands out a /28 instead of one IP, lifting
+      # t4g.small from 11 pods to 110 (paired with maxPods in the node group below).
+      configuration_values = jsonencode({
+        env = {
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
     }
     coredns = {
       most_recent = true
@@ -316,6 +326,21 @@ module "eks" {
       instance_types = ["t4g.small"]
       capacity_type  = "ON_DEMAND"
       ami_type       = "AL2023_ARM_64_STANDARD"
+
+      # AL2023 kubelet must be told the higher limit explicitly; the default is
+      # computed from ENI count (11 on t4g.small) even with prefix delegation on.
+      cloudinit_pre_nodeadm = [{
+        content_type = "application/node.eks.aws"
+        content      = <<-EOT
+          ---
+          apiVersion: node.eks.aws/v1alpha1
+          kind: NodeConfig
+          spec:
+            kubelet:
+              config:
+                maxPods: 110
+        EOT
+      }]
 
       min_size     = 2
       max_size     = 3

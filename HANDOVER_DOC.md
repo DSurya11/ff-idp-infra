@@ -1,6 +1,6 @@
 ---
 # Feature Flag IDP — Master Handover Document
-> Last updated: 2026-09-26 (Session 4)
+> Last updated: 2026-09-26 (Session 5)
 > Purpose: Self-contained context for any AI/agent to continue this project from any point.
 > Nothing should need to be re-verified or re-asked if this document is read first.
 
@@ -137,7 +137,7 @@ orphaned snapshots. Must be true. Set and verified in 20-data/main.tf.
 | `Feature-Flag-Service` | `/home/surya/projects/feature flag service/` | https://github.com/DSurya11/Feature-Flag-Service | ✅ Steps 1–22 complete |
 | `feature-flag-service-env-config` | `/home/surya/projects/feature-flag-service-env-config/` | https://github.com/DSurya11/feature-flag-service-env-config | ⚠️ Flat — restructure in Step 27 |
 | `idp-portal` | `/home/surya/projects/idp-portal/` | Local only | ⚠️ Scaffold only, SQLite, no CI |
-| `ff-idp-infra` | `/home/surya/projects/ff-idp-infra/` | https://github.com/DSurya11/ff-idp-infra | 🚧 Step 23 in progress |
+| `ff-idp-infra` | `/home/surya/projects/ff-idp-infra/` | https://github.com/DSurya11/ff-idp-infra | 🚧 Step 25 in progress (ALB ingress verification) |
 
 Note: `/home/surya/projects/feature flag service/` — path has a SPACE. Always quote it.
 
@@ -284,12 +284,12 @@ ff-idp-infra/
   │                 ECR repos, ElastiCache Valkey.
   │                 Backend: S3.
   │                 DESTROYED each session (most expensive layer).
-  │                 NOT YET WRITTEN — Step 23 in progress.
+  │                 WRITTEN (Steps 23/24/25 infra). Prefix delegation + force_delete added Session 5.
   │
-  40-platform/      Argo CD Helm release ONLY. Everything else installed BY Argo CD.
+  40-platform/      Argo CD + External Secrets Operator Helm releases. Everything else installed BY Argo CD.
   │                 Backend: S3.
   │                 DESTROYED each session (goes with layer 30).
-  │                 NOT YET WRITTEN — Step 26.
+  │                 WRITTEN.
   │
   90-legacy-neon/   Neon Terraform migrated from app repo.
                     NEVER destroy until A/B latency experiment is complete.
@@ -452,11 +452,11 @@ Runs `scripts/verify-empty.py` which:
 | Secret ff-idp/jwt-secret | 20-data | Placeholder — UPDATE MANUALLY each session |
 | Secret ff-idp/grafana-admin | 20-data | Placeholder |
 | Secret ff-idp/backstage-github-app | 20-data | Placeholder — populated Step 29 |
-| ElastiCache ff-idp-valkey | 30-cluster | engine=valkey, cache.t4g.micro (NOT yet written) |
-| EKS cluster ff-idp-cluster | 30-cluster | NOT yet created — Step 23 |
-| NAT Gateway | 30-cluster | NOT yet created — Step 23 |
-| ECR repo: feature-flag-service | 30-cluster | IMMUTABLE tags, scan on push — Step 23 |
-| Argo CD | 40-platform | NOT yet created — Step 26 |
+| ElastiCache ff-idp-valkey | 30-cluster | engine=valkey, cache.t4g.micro |
+| EKS cluster ff-idp-cluster | 30-cluster | Created/destroyed each session |
+| NAT Gateway | 30-cluster | Created/destroyed each session |
+| ECR repo: feature-flag-service | 30-cluster | IMMUTABLE tags, scan on push, force_delete=true |
+| Argo CD + ESO | 40-platform | Created/destroyed each session |
 
 ---
 
@@ -667,10 +667,16 @@ resource "aws_db_instance" "postgres" {
 ### New Findings (Session 4 / Step 25)
 **Finding 18: GitHub OIDC Thumbprint Drift:** The dynamic `tls_certificate` data source fetches the leaf certificate thumbprint, but AWS STS occasionally expects intermediate/root thumbprints, leading to `AssumeRoleWithWebIdentity` failures. Fix: Hardcode well-known AWS thumbprints alongside the dynamic one.
 **Finding 19: CI Cross-Compilation Requirement (Exec Format Error):** EKS nodes (`t4g.small`) are ARM64, but GitHub Actions runner (`ubuntu-latest`) builds x86_64 images by default, causing `CrashLoopBackOff (exec format error)`. Fix: Updated CI to use `docker/setup-qemu-action` and `buildx` for `linux/arm64`.
-**Finding 20: Missing Python Dependency Crash:** `20-data/main.tf` stored the DB URL as `postgresql+asyncpg://`, but the app uses synchronous SQLAlchemy (`create_engine`) with `psycopg2`. This caused a `ModuleNotFoundError: No module named 'asyncpg'` crash on startup. Fix needed: Update DB URL in Terraform to `postgresql+psycopg2://`.
-**Finding 21: EKS t4g.small ENI Pod Limit Exhaustion:** `t4g.small` nodes have a default max-pods limit of 11. ArgoCD, ESO, ALB Controller, and CoreDNS completely filled both nodes, causing API pods to be stuck in `Pending` (`Too many pods`). Fix needed: Enable VPC CNI Prefix Delegation in Terraform to increase the `max-pods` limit.
-**Finding 22: Out-of-band ALB blocks VPC Destruction:** ALBs created by the AWS Load Balancer Controller are not managed by Terraform. `make down` fails to destroy the VPC because the ALB is still attached to the subnets. Fix: Must manually delete ALBs (or use a cleanup script) before destroying the cluster layer.
-**Finding 23: Non-empty ECR blocks make down:** `aws_ecr_repository` cannot be destroyed if it contains images. Fix needed: add `force_delete = true` to the ECR repo Terraform definition.
+**Finding 20: Missing Python Dependency Crash:** `20-data/main.tf` stored the DB URL as `postgresql+asyncpg://`, but the app uses synchronous SQLAlchemy (`create_engine`) with `psycopg2`. This caused a `ModuleNotFoundError: No module named 'asyncpg'` crash on startup. **FIXED Session 5** (uncommitted): `20-data/main.tf` now emits `postgresql+psycopg2://`.
+**Finding 21: EKS t4g.small ENI Pod Limit Exhaustion:** `t4g.small` nodes have a default max-pods limit of 11. ArgoCD, ESO, ALB Controller, and CoreDNS completely filled both nodes, causing API pods to be stuck in `Pending` (`Too many pods`). **FIXED Session 5** (uncommitted, untested on a live cluster): vpc-cni addon `ENABLE_PREFIX_DELEGATION=true` + `before_compute`, and node group `cloudinit_pre_nodeadm` sets kubelet `maxPods: 110`. VERIFY after next `make up`: `kubectl get node -o jsonpath='{.items[*].status.allocatable.pods}'` should show 110.
+**Finding 22: Out-of-band ALB blocks VPC Destruction:** ALBs created by the AWS Load Balancer Controller are not managed by Terraform. `make down` fails to destroy the VPC because the ALB is still attached to the subnets. **FIXED Session 5**: `scripts/down.sh` deletes Ingresses, then any leftover ALBs/target groups in the project VPC, before destroying layers.
+**Finding 23: Non-empty ECR blocks make down:** `aws_ecr_repository` cannot be destroyed if it contains images. **FIXED Session 5**: `force_delete = true` on the ECR repo.
+
+### New Findings (Session 5 - cost audit)
+**Finding 24: Orphaned RDS final snapshot.** `ff-idp-postgres-final-2026-09-22` (20GB, ~$2.62/mo) was left by the first destroy, before `skip_final_snapshot=true`. `make verify-empty` reported OK because the Tagging API does not surface it. Deleted manually 2026-09-26.
+**Finding 25: Tag-based verification is not enough.** Snapshots, controller-created ALBs, ENIs and PVC volumes are not reliably visible via `resourcegroupstaggingapi`. `verify-empty.py` now ALSO queries each service directly (EKS, EC2, NAT, EIP, ELB, RDS + snapshots, ElastiCache, EBS + snapshots, Secrets, VPC endpoints, ECR, CloudWatch logs).
+**Finding 26: `|| true` hid failed destroys.** `make down` now runs `scripts/down.sh`, which continues through all layers but exits non-zero and lists what failed. Never close the laptop on a non-zero exit.
+**Finding 27: Spend audit.** As of 2026-09-26, ~$1 of credits used over 3 sessions, consistent with the ~$0.73/session model. Cost Explorer lags ~24h and shows ~$0; use Billing > Credits for the real balance. All regions checked empty.
 
 ---
 
@@ -786,6 +792,17 @@ kubectl get secret feature-flag-secrets -n feature-flag-dev \
 |---|---|
 | p95 collapses to <10ms | Root cause was WAN RTT / TLS / Neon pooler hop |
 | p95 stays high | Root cause is SQLAlchemy session/pool handling → add OpenTelemetry (Step 34) |
+
+---
+
+## 16b. Next Session Checklist (Session 6)
+1. `aws sts get-caller-identity --profile ff-idp` then `make up`.
+2. Confirm pods schedulable (max-pods 110) and the API pod starts (psycopg2 URL). Fixes are uncommitted - commit them first.
+3. Update `ff-idp/jwt-secret` in Secrets Manager (never echo it).
+4. Finish Step 25: `curl -sI http://<alb-dns>/health` = 200, exactly one ALB.
+5. Run `test_latency.py` for the Neon vs RDS A/B.
+6. `make down` must exit 0 (it runs verify-empty itself). If it exits non-zero, fix before closing the laptop.
+7. Check Billing > Credits for the real balance.
 
 ---
 
