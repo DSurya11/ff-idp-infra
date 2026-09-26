@@ -50,7 +50,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "40-platform/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"
@@ -65,7 +65,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "ff-idp"
+      Project     = "idp"
       ManagedBy   = "terraform"
       Environment = "shared"
       Layer       = "40-platform"
@@ -78,7 +78,7 @@ provider "aws" {
 data "terraform_remote_state" "cluster" {
   backend = "s3"
   config = {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "30-cluster/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"
@@ -122,7 +122,7 @@ provider "kubernetes" {
 #
 # IRSA wiring:
 #   ServiceAccount "external-secrets" in namespace "external-secrets"
-#   → annotated with ff-idp-eso IAM role ARN (from 30-cluster)
+#   → annotated with idp-eso IAM role ARN (from 30-cluster)
 #   → role trust policy allows sts:AssumeRoleWithWebIdentity from this SA
 #
 # Chart: external-secrets/external-secrets
@@ -363,7 +363,7 @@ locals {
     spec:
       project: default
       source:
-        repoURL: https://github.com/DSurya11/feature-flag-service-env-config
+        repoURL: https://github.com/DSurya11/idp-gitops
         targetRevision: HEAD
         path: platform/argocd-apps
       destination:

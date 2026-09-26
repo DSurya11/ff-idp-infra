@@ -30,7 +30,7 @@
 #   engine = "valkey" — same Redis API, ~20% cheaper. Never use "redis".
 #
 # IRSA ROLES (three, all here):
-#   - ESO (External Secrets Operator): reads ff-idp/* secrets from Secrets Manager
+#   - ESO (External Secrets Operator): reads idp/* secrets from Secrets Manager
 #   - ALB Controller: manages AWS ALBs for Ingress resources
 #   - EBS CSI Driver: provisions gp3 EBS volumes for PVCs
 #
@@ -54,7 +54,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "30-cluster/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"
@@ -67,7 +67,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "ff-idp"
+      Project     = "idp"
       ManagedBy   = "terraform"
       Environment = var.environment
       Layer       = "30-cluster"
@@ -80,7 +80,7 @@ provider "aws" {
 data "terraform_remote_state" "network" {
   backend = "s3"
   config = {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "10-network/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"
@@ -92,7 +92,7 @@ data "terraform_remote_state" "network" {
 data "terraform_remote_state" "data" {
   backend = "s3"
   config = {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "20-data/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"
@@ -115,7 +115,7 @@ resource "aws_eip" "nat" {
   domain = "vpc"
 
   tags = {
-    Name = "ff-idp-nat-eip"
+    Name = "idp-nat-eip"
   }
 }
 
@@ -124,7 +124,7 @@ resource "aws_nat_gateway" "this" {
   subnet_id     = data.terraform_remote_state.network.outputs.public_subnet_ids[0]
 
   tags = {
-    Name = "ff-idp-nat"
+    Name = "idp-nat"
   }
 
   depends_on = [aws_eip.nat]
@@ -164,17 +164,17 @@ resource "aws_route" "private_nat_1b" {
 # ASCII hyphens in description — AWS rejects non-ASCII characters in description fields.
 
 resource "aws_elasticache_subnet_group" "valkey" {
-  name        = "ff-idp-valkey"
+  name        = "idp-valkey"
   description = "Private subnets for ElastiCache Valkey"
   subnet_ids  = data.terraform_remote_state.network.outputs.private_subnet_ids
 
   tags = {
-    Name = "ff-idp-valkey-subnet-group"
+    Name = "idp-valkey-subnet-group"
   }
 }
 
 resource "aws_elasticache_replication_group" "valkey" {
-  replication_group_id = "ff-idp-valkey"
+  replication_group_id = "idp-valkey"
   description          = "Feature Flag IDP - Valkey cache layer"
 
   engine               = "valkey"
@@ -199,7 +199,7 @@ resource "aws_elasticache_replication_group" "valkey" {
   }
 
   tags = {
-    Name = "ff-idp-valkey"
+    Name = "idp-valkey"
   }
 }
 
@@ -207,7 +207,7 @@ resource "aws_elasticache_replication_group" "valkey" {
 # group is recreated (i.e. every session under Option B), so it cannot live in Git.
 # Publish it to Secrets Manager; ESO syncs it into the app's K8s Secret as REDIS_URL.
 resource "aws_secretsmanager_secret" "valkey" {
-  name                    = "ff-idp/valkey"
+  name                    = "idp/valkey"
   description             = "Valkey connection URL - recreated every session"
   recovery_window_in_days = 0 # immediate deletion so the name is free on next make up
 }
@@ -243,7 +243,7 @@ module "eks" {
 
   # v20 argument names (v21 renamed them — we use v20 to avoid a planning-phase bug
   # in v21 where count in the node group submodule references partition before it's known)
-  cluster_name    = "ff-idp-cluster"
+  cluster_name    = "idp-cluster"
   cluster_version = "1.35" # STANDARD_SUPPORT until 2027-03-27 — $0.10/hr
 
   vpc_id     = data.terraform_remote_state.network.outputs.vpc_id
@@ -351,7 +351,7 @@ module "eks" {
   }
 
   tags = {
-    Name = "ff-idp-cluster"
+    Name = "idp-cluster"
   }
 
   depends_on = [aws_nat_gateway.this, aws_route.private_nat_1a, aws_route.private_nat_1b]
@@ -361,7 +361,7 @@ module "eks" {
 # IRSA — External Secrets Operator
 # =============================================================================
 # ESO needs to call secretsmanager:GetSecretValue and DescribeSecret.
-# Policy is scoped to ff-idp/* secrets only — NOT "*".
+# Policy is scoped to idp/* secrets only — NOT "*".
 # The trailing -* wildcard covers the random suffix AWS appends to secret names.
 
 data "aws_iam_policy_document" "eso_assume_role" {
@@ -395,23 +395,23 @@ data "aws_iam_policy_document" "eso_policy" {
       "secretsmanager:DescribeSecret",
     ]
     resources = [
-      # Scoped to ff-idp/* with suffix wildcard (AWS appends random chars)
-      "arn:aws:secretsmanager:ap-south-1:${data.aws_caller_identity.current.account_id}:secret:ff-idp/*",
+      # Scoped to idp/* with suffix wildcard (AWS appends random chars)
+      "arn:aws:secretsmanager:ap-south-1:${data.aws_caller_identity.current.account_id}:secret:idp/*",
     ]
   }
 }
 
 resource "aws_iam_role" "eso" {
-  name               = "ff-idp-eso"
+  name               = "idp-eso"
   assume_role_policy = data.aws_iam_policy_document.eso_assume_role.json
 
   tags = {
-    Name = "ff-idp-eso"
+    Name = "idp-eso"
   }
 }
 
 resource "aws_iam_role_policy" "eso" {
-  name   = "ff-idp-eso-secrets-policy"
+  name   = "idp-eso-secrets-policy"
   role   = aws_iam_role.eso.id
   policy = data.aws_iam_policy_document.eso_policy.json
 }
@@ -460,16 +460,16 @@ data "http" "alb_controller_iam_policy" {
 }
 
 resource "aws_iam_role" "alb_controller" {
-  name               = "ff-idp-alb-controller"
+  name               = "idp-alb-controller"
   assume_role_policy = data.aws_iam_policy_document.alb_controller_assume_role.json
 
   tags = {
-    Name = "ff-idp-alb-controller"
+    Name = "idp-alb-controller"
   }
 }
 
 resource "aws_iam_role_policy" "alb_controller" {
-  name   = "ff-idp-alb-controller-policy"
+  name   = "idp-alb-controller-policy"
   role   = aws_iam_role.alb_controller.id
   policy = data.http.alb_controller_iam_policy.response_body
 }

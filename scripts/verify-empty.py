@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-verify-empty.py — checks that no billable ff-idp resources are running in AWS.
+verify-empty.py — checks that no billable idp resources are running in AWS.
 
 Called by: make verify-empty
 Exit 0   → safe to close laptop, cost = $0.00
@@ -88,11 +88,11 @@ def direct_checks():
 
 
 def main():
-    print("==> Scanning for billable ff-idp resources...")
+    print("==> Scanning for billable idp resources...")
     result = subprocess.run(
         [
             "aws", "resourcegroupstaggingapi", "get-resources",
-            "--tag-filters", "Key=Project,Values=ff-idp",
+            "--tag-filters", "Key=Project,Values=idp,ff-idp",  # old tag too: nothing under the pre-rename name slips past
             "--query", "ResourceTagMappingList[].ResourceARN",
             "--output", "json",
             "--profile", PROFILE,

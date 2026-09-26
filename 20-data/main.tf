@@ -35,7 +35,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "20-data/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"
@@ -48,7 +48,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "ff-idp"
+      Project     = "idp"
       ManagedBy   = "terraform"
       Environment = var.environment
       Layer       = "20-data"
@@ -61,7 +61,7 @@ provider "aws" {
 data "terraform_remote_state" "network" {
   backend = "s3"
   config = {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "10-network/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"
@@ -71,12 +71,12 @@ data "terraform_remote_state" "network" {
 # ─── RDS subnet group ────────────────────────────────────────────────────────
 
 resource "aws_db_subnet_group" "postgres" {
-  name        = "ff-idp-postgres"
+  name        = "idp-postgres"
   description = "Private subnets for RDS PostgreSQL"
   subnet_ids  = data.terraform_remote_state.network.outputs.private_subnet_ids
 
   tags = {
-    Name = "ff-idp-postgres-subnet-group"
+    Name = "idp-postgres-subnet-group"
   }
 }
 
@@ -90,7 +90,7 @@ resource "random_password" "db" {
 # ─── RDS PostgreSQL ──────────────────────────────────────────────────────────
 
 resource "aws_db_instance" "postgres" {
-  identifier        = "ff-idp-postgres"
+  identifier        = "idp-postgres"
   engine            = "postgres"
   engine_version    = "16"
   instance_class    = "db.t3.micro" # t4g.micro has no capacity in ap-south-1a/1b; t3.micro does
@@ -129,7 +129,7 @@ resource "aws_db_instance" "postgres" {
   }
 
   tags = {
-    Name = "ff-idp-postgres"
+    Name = "idp-postgres"
   }
 }
 
@@ -143,7 +143,7 @@ resource "aws_db_instance" "postgres" {
 
 # DB credentials — auto-generated, stored immediately
 resource "aws_secretsmanager_secret" "db_creds" {
-  name                    = "ff-idp/db-creds"
+  name                    = "idp/db-creds"
   description             = "RDS PostgreSQL credentials and connection info"
   recovery_window_in_days = 0 # immediate deletion in lab (no 7-30 day quarantine)
 }
@@ -176,7 +176,7 @@ resource "random_password" "jwt" {
 }
 
 resource "aws_secretsmanager_secret" "jwt_secret" {
-  name                    = "ff-idp/jwt-secret"
+  name                    = "idp/jwt-secret"
   description             = "JWT signing key for feature-flag-service"
   recovery_window_in_days = 0
 }
@@ -195,7 +195,7 @@ resource "aws_secretsmanager_secret_version" "jwt_secret" {
 
 # Grafana admin password — placeholder
 resource "aws_secretsmanager_secret" "grafana_admin" {
-  name                    = "ff-idp/grafana-admin"
+  name                    = "idp/grafana-admin"
   description             = "Grafana admin password"
   recovery_window_in_days = 0
 }
@@ -213,7 +213,7 @@ resource "aws_secretsmanager_secret_version" "grafana_admin" {
 
 # Backstage GitHub App — placeholder; populated in Step 29
 resource "aws_secretsmanager_secret" "backstage_github_app" {
-  name                    = "ff-idp/backstage-github-app"
+  name                    = "idp/backstage-github-app"
   description             = "Backstage GitHub App ff-idp-backstage (appId, clientId, clientSecret, privateKey)"
   recovery_window_in_days = 0
 }

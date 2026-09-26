@@ -1,7 +1,7 @@
 # =============================================================================
 # modules/vpc/main.tf
 #
-# Reusable VPC module for the ff-idp project.
+# Reusable VPC module for the idp project.
 #
 # Creates:
 #   - VPC with DNS hostnames + resolution enabled

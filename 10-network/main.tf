@@ -25,7 +25,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "10-network/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"
@@ -38,7 +38,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "ff-idp"
+      Project     = "idp"
       ManagedBy   = "terraform"
       Environment = var.environment
       Layer       = "10-network"
@@ -49,8 +49,8 @@ provider "aws" {
 module "vpc" {
   source = "../modules/vpc"
 
-  name         = "ff-idp"
-  cluster_name = "ff-idp-cluster"
+  name         = "idp"
+  cluster_name = "idp-cluster"
 
   vpc_cidr           = "10.0.0.0/16"
   availability_zones = ["ap-south-1a", "ap-south-1b"]

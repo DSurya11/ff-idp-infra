@@ -1,6 +1,6 @@
-# ff-idp-infra — Feature Flag IDP Infrastructure
+# idp-infra — Internal Developer Platform infrastructure
 
-All AWS infrastructure for the Feature Flag IDP project, managed with Terraform.
+All AWS infrastructure for the IDP (EKS, data, networking, Argo CD bootstrap), managed with Terraform.
 
 ## Layer Architecture
 

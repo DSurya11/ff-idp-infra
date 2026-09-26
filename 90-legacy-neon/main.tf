@@ -24,7 +24,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "90-legacy-neon/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"

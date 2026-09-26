@@ -37,7 +37,7 @@ REGION   := ap-south-1
 up:
 	@echo ""
 	@echo "╔══════════════════════════════════════════════╗"
-	@echo "║         ff-idp — Starting session            ║"
+	@echo "║          idp — Starting session              ║"
 	@echo "║    Estimated time: 20-27 minutes total       ║"
 	@echo "╚══════════════════════════════════════════════╝"
 	@echo ""
@@ -52,7 +52,7 @@ up:
 	@echo ""
 	@echo "==> [3/4] Updating kubeconfig..."
 	aws eks update-kubeconfig \
-	  --name ff-idp-cluster \
+	  --name idp-cluster \
 	  --region $(REGION) \
 	  --profile $(PROFILE)
 	@echo ""
@@ -76,7 +76,7 @@ up:
 down:
 	@echo ""
 	@echo "╔══════════════════════════════════════════════╗"
-	@echo "║         ff-idp — Shutting down               ║"
+	@echo "║           idp — Shutting down                ║"
 	@echo "║   All data will be permanently deleted.      ║"
 	@echo "║   Cost after completion: $0.00/month         ║"
 	@echo "╚══════════════════════════════════════════════╝"
@@ -84,7 +84,7 @@ down:
 	@./scripts/down.sh
 
 # ─── Cost safety check (must return OK before closing laptop) ─────────────────
-# Checks ALL tagged ff-idp resources still running.
+# Checks ALL tagged idp resources still running.
 # VPC/subnets/SGs are free and will show up — that is normal and expected.
 # The check filters to only BILLABLE resource types.
 verify-empty:

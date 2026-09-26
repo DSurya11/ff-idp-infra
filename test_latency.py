@@ -53,8 +53,8 @@ def jwt_secret():
     if os.environ.get("JWT_SECRET_KEY"):
         return os.environ["JWT_SECRET_KEY"]
     out = subprocess.check_output([
-        "aws", "secretsmanager", "get-secret-value", "--secret-id", "ff-idp/jwt-secret",
-        "--profile", "ff-idp", "--region", "ap-south-1",
+        "aws", "secretsmanager", "get-secret-value", "--secret-id", "idp/jwt-secret",
+        "--profile", "idp", "--region", "ap-south-1",
         "--query", "SecretString", "--output", "text",
     ], text=True)
     return json.loads(out)["JWT_SECRET_KEY"]

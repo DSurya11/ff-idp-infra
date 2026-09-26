@@ -5,7 +5,7 @@
 #   1. S3 bucket for remote state (all layers 10-90 use this)
 #   2. DynamoDB table for state locking (optional but good portfolio practice)
 #   3. GitHub OIDC Identity Provider (enables keyless CI auth)
-#   4. IAM role ff-idp-github-ci (assumed by GitHub Actions via OIDC)
+#   4. IAM role idp-github-ci (assumed by GitHub Actions via OIDC)
 #
 # STATE: LOCAL — intentional chicken-and-egg.
 #   This layer creates the S3 bucket that all other layers use as their backend.
@@ -43,7 +43,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "ff-idp"
+      Project     = "idp"
       ManagedBy   = "terraform"
       Environment = "bootstrap"
       Layer       = "00-bootstrap"
@@ -65,7 +65,7 @@ data "tls_certificate" "github_actions" {
 # ─── S3 state bucket ─────────────────────────────────────────────────────────
 
 resource "aws_s3_bucket" "tfstate" {
-  bucket = "ff-idp-tfstate-${data.aws_caller_identity.current.account_id}"
+  bucket = "idp-tfstate-${data.aws_caller_identity.current.account_id}"
 
   # Prevent accidental destruction of the state bucket.
   # If you genuinely need to destroy it, remove this block first,
@@ -117,7 +117,7 @@ resource "aws_s3_bucket_ownership_controls" "tfstate" {
 # Terraform versions and as an explicit portfolio demonstration.
 
 resource "aws_dynamodb_table" "tfstate_locks" {
-  name         = "ff-idp-tf-locks"
+  name         = "idp-tf-locks"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "LockID"
 
@@ -142,12 +142,12 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
   ]
 }
 
-# ─── IAM role: ff-idp-github-ci ──────────────────────────────────────────────
-# Assumed by GitHub Actions workflows in the Feature-Flag-Service repo,
+# ─── IAM role: idp-github-ci ──────────────────────────────────────────────
+# Assumed by GitHub Actions workflows in the feature-flag-service repo,
 # main branch only. The condition is intentionally strict — no wildcards.
 #
 # SECURITY: The sub condition pins to a specific repo AND branch.
-#   repo:DSurya11@162597218/Feature-Flag-Service@1368152185:ref:refs/heads/main
+#   repo:DSurya11@162597218/feature-flag-service@1368152185:ref:refs/heads/main
 #   Any other repo or branch cannot assume this role.
 #   Never use repo:*:* — that would allow any GitHub Action in any repo
 #   belonging to the GitHub OIDC provider to assume this role.
@@ -175,10 +175,10 @@ data "aws_iam_policy_document" "github_ci_trust" {
       # GitHub's OIDC sub claim now embeds immutable owner and repo IDs
       # (repo:OWNER@OWNER_ID/REPO@REPO_ID:...). The old "repo:OWNER/REPO:..." form no longer
       # matches, which shows up as "Not authorized to perform sts:AssumeRoleWithWebIdentity".
-      # IDs: DSurya11 = 162597218, Feature-Flag-Service = 1368152185.
+      # IDs: DSurya11 = 162597218, feature-flag-service = 1368152185.
       # idp-portal = 1389614591 (Backstage, Step 29). Each entry is one exact repo + branch.
       values = [
-        "repo:DSurya11@162597218/Feature-Flag-Service@1368152185:ref:refs/heads/main",
+        "repo:DSurya11@162597218/feature-flag-service@1368152185:ref:refs/heads/main",
         "repo:DSurya11@162597218/idp-portal@1389614591:ref:refs/heads/main",
       ]
     }
@@ -186,9 +186,9 @@ data "aws_iam_policy_document" "github_ci_trust" {
 }
 
 resource "aws_iam_role" "github_ci" {
-  name               = "ff-idp-github-ci"
+  name               = "idp-github-ci"
   assume_role_policy = data.aws_iam_policy_document.github_ci_trust.json
-  description        = "Assumed by GitHub Actions CI for Feature-Flag-Service and idp-portal (main branch only)"
+  description        = "Assumed by GitHub Actions CI for feature-flag-service and idp-portal (main branch only)"
 }
 
 # ECR permissions — scoped to the specific repository.
@@ -230,9 +230,9 @@ resource "aws_iam_role_policy" "github_ci_ecr" {
   policy = data.aws_iam_policy_document.github_ci_ecr.json
 }
 
-# ─── IAM role: ff-idp-service-ci (Step 30 golden path) ───────────────────────
+# ─── IAM role: idp-service-ci (Step 30 golden path) ───────────────────────
 # Assumed by CI of services CREATED BY THE BACKSTAGE TEMPLATE. Those repos do not exist
-# when this is applied, so their exact subjects cannot be listed like ff-idp-github-ci's.
+# when this is applied, so their exact subjects cannot be listed like idp-github-ci's.
 #
 # DELIBERATE, NARROW EXCEPTION to "no wildcards in OIDC trust" (user decision 2026-09-27):
 #   - trust: any repo whose owner is account ID 162597218 (immutable - a renamed or
@@ -266,7 +266,7 @@ data "aws_iam_policy_document" "service_ci_trust" {
 }
 
 resource "aws_iam_role" "service_ci" {
-  name               = "ff-idp-service-ci"
+  name               = "idp-service-ci"
   assume_role_policy = data.aws_iam_policy_document.service_ci_trust.json
   description        = "CI for template-created services: create/push ECR repos under svc/* only"
 }

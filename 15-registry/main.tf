@@ -26,7 +26,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "ff-idp-tfstate-693906847772"
+    bucket  = "idp-tfstate-693906847772"
     key     = "15-registry/terraform.tfstate"
     region  = "ap-south-1"
     profile = "ff-idp"
@@ -39,7 +39,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "ff-idp"
+      Project     = "idp"
       ManagedBy   = "terraform"
       Environment = "shared"
       Layer       = "15-registry"

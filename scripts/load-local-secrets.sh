@@ -20,13 +20,13 @@ for f in backstage-app.env backstage-app.pem backstage-client-secret; do
   [ -s "$D/$f" ] || missing+=("$f")
 done
 if [ ${#missing[@]} -gt 0 ]; then
-  echo "WARN: skipping ff-idp/backstage-github-app - missing in $D: ${missing[*]}"
+  echo "WARN: skipping idp/backstage-github-app - missing in $D: ${missing[*]}"
   echo "      Backstage starts, but GitHub reads/writes and templates will fail."
   exit 0
 fi
 
 python3 - "$D" <<'PY' | aws secretsmanager put-secret-value --region ap-south-1 \
-    --secret-id ff-idp/backstage-github-app --secret-string file:///dev/stdin \
+    --secret-id idp/backstage-github-app --secret-string file:///dev/stdin \
     --query 'Name' --output text
 import json, sys, pathlib
 d = pathlib.Path(sys.argv[1])
@@ -38,4 +38,4 @@ print(json.dumps({
     "privateKey": (d / "backstage-app.pem").read_text(),
 }))
 PY
-echo "Loaded ff-idp/backstage-github-app from $D"
+echo "Loaded idp/backstage-github-app from $D"

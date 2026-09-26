@@ -9,7 +9,7 @@ set -uo pipefail
 
 export AWS_PROFILE="${AWS_PROFILE:-ff-idp}" AWS_PAGER=""
 REGION=ap-south-1
-CLUSTER=ff-idp-cluster
+CLUSTER=idp-cluster
 cd "$(dirname "$0")/.."
 FAILED=()
 
@@ -34,7 +34,7 @@ fi
 
 # Fallback / confirmation: delete any ALB tagged by the controller for this cluster,
 # or in this project's VPC, that is still around.
-VPC_ID=$(aws ec2 describe-vpcs --region "$REGION" --filters Name=tag:Project,Values=ff-idp \
+VPC_ID=$(aws ec2 describe-vpcs --region "$REGION" --filters Name=tag:Project,Values=idp \
   --query 'Vpcs[0].VpcId' --output text 2>/dev/null)
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   for arn in $(aws elbv2 describe-load-balancers --region "$REGION" \

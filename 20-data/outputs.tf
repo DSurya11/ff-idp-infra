@@ -12,21 +12,21 @@ output "rds_address" {
 # (destroyed nightly) because ElastiCache has no stop API and would cost
 # $0.016/hr = ~$11.50/month if left permanently running in this layer.
 output "db_creds_secret_arn" {
-  description = "ARN of the ff-idp/db-creds Secrets Manager secret"
+  description = "ARN of the idp/db-creds Secrets Manager secret"
   value       = aws_secretsmanager_secret.db_creds.arn
 }
 
 output "jwt_secret_arn" {
-  description = "ARN of the ff-idp/jwt-secret Secrets Manager secret"
+  description = "ARN of the idp/jwt-secret Secrets Manager secret"
   value       = aws_secretsmanager_secret.jwt_secret.arn
 }
 
 output "grafana_admin_secret_arn" {
-  description = "ARN of the ff-idp/grafana-admin Secrets Manager secret"
+  description = "ARN of the idp/grafana-admin Secrets Manager secret"
   value       = aws_secretsmanager_secret.grafana_admin.arn
 }
 
 output "backstage_github_app_secret_arn" {
-  description = "ARN of the ff-idp/backstage-github-app Secrets Manager secret"
+  description = "ARN of the idp/backstage-github-app Secrets Manager secret"
   value       = aws_secretsmanager_secret.backstage_github_app.arn
 }
