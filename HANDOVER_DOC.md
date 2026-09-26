@@ -30,6 +30,40 @@ scans both `Project=idp` and `Project=ff-idp` tags.
 
 ---
 
+## 0a. Current State at a Glance (2026-09-27, end of Session 6)
+
+**AWS right now:** everything destroyed except the free permanent layers (00-bootstrap,
+10-network, 15-registry, 90-legacy-neon). `make verify-empty` passes: $0.00.
+
+| Step | Status |
+|---|---|
+| 1-22 (app, kind platform, Terraform bootstrap, network, data, CI rewrite) | Done |
+| 23 EKS, 24 ESO, 25 ALB ingress | Done and verified |
+| 26 Argo CD app-of-apps via Terraform, 27 Kustomize overlays | Done and verified 2026-09-26 |
+| 28 HPA + PDB + zero-downtime rollouts (0 failed requests under load) | Done and verified 2026-09-26 |
+| 29 Backstage in the cluster (image via CI, RDS, GitHub App) | Done and verified 2026-09-27 |
+| 30 Software template `python-service` | Built; live demo is the next session |
+| 31 plugins, 33 Kyverno suite, 34 observability, 35 DR drill, 36 e2e rewrite | Not started |
+
+**How a session works:** `make up` (~21-27 min, creates 20-data -> 30-cluster -> 40-platform;
+Argo CD then deploys everything from idp-gitops) -> work -> `make down` (~16 min, must exit 0).
+Cost while up: ~$0.26/hr (~$0.80 per 3-hour session, section 3).
+
+**Delivery chain (verified end to end):** push to an app repo -> CI (tests, arm64 image,
+Trivy gate, push to ECR via OIDC) -> CI bot commits the new tag to idp-gitops -> Argo CD
+auto-syncs -> rolling update with zero dropped requests.
+
+**Session 6 (2026-09-27) summary:** Step 29 verified; Step 30 built (template, narrow CI role
+`idp-service-ci`, GitHub App `ff-idp-backstage`, credentials from `~/.idp`); project renamed
+ff-idp -> idp (section 0, Finding 50); Terraform state locking turned on (Finding 49);
+CI hardened (Finding 48 fixed); stale `argocd/application.yaml` and old catalog data removed
+from feature-flag-service.
+
+**Next session (planned 2026-09-28):** Step 30 live demo, then new templates (flag helper in
+the skeleton, Template 2 `add-feature-flag`). Checklist in section 16b.
+
+---
+
 ## 1. Account & Environment Facts (Verified, Not Assumed)
 
 | Key | Value |
@@ -109,22 +143,23 @@ orphaned snapshots. Must be true. Set and verified in 20-data/main.tf.
 | ALB | 3hr × $0.0239 | $0.07 |
 | Public IPv4 (~3 IPs) | 3 × 3hr × $0.005 | $0.05 |
 | EBS (negligible) | | ~$0.01 |
-| RDS (~1hr creation) | 1hr × $0.017 | $0.02 |
-| Secrets Manager (4 secrets, proration) | | ~$0.01 |
-| **Session total** | | **~$0.73** |
+| RDS db.t3.micro | 3hr × $0.017 | $0.05 |
+| ElastiCache Valkey | 3hr × $0.016 | $0.05 |
+| Secrets Manager (4-5 secrets, proration) | | ~$0.01 |
+| **Session total** | ~$0.26/hr | **~$0.80** (+$0.05 if HPA adds a 3rd node) |
 
 ### Monthly (12 sessions/month, 3hr each)
 | Component | Monthly |
 |---|---|
-| Sessions (12 × $0.73) | $8.76 |
+| Sessions (12 × $0.80) | $9.60 |
 | Between sessions | $0.00 (Option B — everything destroyed) |
 | ECR (~1GB, kept between sessions) | $0.10 |
 | S3 + DynamoDB (state) | ~$0.01 |
-| **Monthly total** | **~$8.87** |
+| **Monthly total** | **~$9.71** |
 
 ### Project Total
-- 6 months × $8.87 = ~$53 total
-- Credits remaining after project: ~$147
+- 6 months × $9.71 = ~$58 total
+- Credits remaining after project: ~$140
 - Verdict: Very comfortable. No need to cut scope.
 
 ---
@@ -153,56 +188,36 @@ orphaned snapshots. Must be true. Set and verified in 20-data/main.tf.
 
 ---
 
-## 5. Repository State (as of 2026-09-24)
+## 5. Repository State (as of 2026-09-27)
 
-### All Repos
-| Repo | Local Path | URL | Status |
-|---|---|---|---|
-| `feature-flag-service` | `/home/surya/projects/feature flag service/` | https://github.com/DSurya11/feature-flag-service | ✅ Steps 1–22 complete |
-| `idp-gitops` | `/home/surya/projects/idp-gitops/` | https://github.com/DSurya11/idp-gitops | ⚠️ Flat — restructure in Step 27 |
-| `idp-portal` | `/home/surya/projects/idp-portal/` | Local only | ⚠️ Scaffold only, SQLite, no CI |
-| `idp-infra` | `/home/surya/projects/idp-infra/` | https://github.com/DSurya11/idp-infra | 🚧 Step 25 in progress (ALB ingress verification) |
+| Repo | Local path | What it holds |
+|---|---|---|
+| [idp-infra](https://github.com/DSurya11/idp-infra) | `~/projects/idp-infra` | Terraform layers, Makefile, `scripts/` (down.sh, verify-empty.py, load-local-secrets.sh), `tests/rollout-load.js`, this doc |
+| [idp-gitops](https://github.com/DSurya11/idp-gitops) | `~/projects/idp-gitops` | Everything Argo CD deploys (layout below). Nothing is applied by hand |
+| [idp-portal](https://github.com/DSurya11/idp-portal) (public) | `~/projects/idp-portal` | Backstage 1.54 app, its CI, and `templates/python-service/` |
+| [feature-flag-service](https://github.com/DSurya11/feature-flag-service) | `~/projects/feature-flag-service` | The flag API (FastAPI, Alembic), its CI, `catalog-info.yaml` |
 
-Note: `/home/surya/projects/feature flag service/` — path has a SPACE. Always quote it.
+Untracked on purpose (do not commit): idp-infra `HANDOVER_UPDATE.md`, `STEP_23_INTERVIEW_DEEP_DIVE.md`,
+`parse_transcript.py`, `transcript_summary.txt`, `update_handover.py`; idp-portal `fix_all.js`,
+`fix_config.js`, `scrape.js`, `update_config.js`; feature-flag-service `kubectl`, `terraform/*`,
+`tests/test_e2e.sh` (old kind-era script, rewrite is Step 36).
 
-### env-config Current State (Flat — Restructure in Step 27)
+### idp-gitops layout
 ```
-idp-gitops/
-  api-deployment.yaml          ← image SHA auto-updated by CI
-  api-service.yaml
-  kyverno-policy-disallow-root.yaml
-  namespace.yaml
-  redis-deployment.yaml
-  redis-service.yaml
-  secret-template.yaml.example ← safe (renamed, not parsed by Argo CD)
-  servicemonitor.yaml
+platform/argocd-apps/        app-of-apps children of the root app (root is created by 40-platform)
+  platform-cluster.yaml      wave 0: platform/cluster
+  feature-flag-dev.yaml      wave 1: apps/feature-flag-service/overlays/dev -> ns feature-flag-dev
+  idp-portal.yaml            wave 1: apps/idp-portal/overlays/dev -> ns backstage
+  <service>.yaml             added by each python-service template PR
+platform/cluster/            ClusterSecretStore (Secrets Manager), PriorityClass business-critical
+platform/kyverno/            parked, not synced (Step 33)
+apps/feature-flag-service/   base (deployment, service, ingress, externalsecret, migrate-job hook,
+                             hpa + pdb in wave 3) + overlays dev/staging/prod (only dev deployed)
+apps/idp-portal/             base (deployment, service, 2 externalsecrets) + overlays/dev
 ```
+CI bots only ever change `newTag:` in `apps/*/overlays/dev/kustomization.yaml`.
 
-### idp-portal Current State (Unchanged from original)
-- Scaffolded: `npx @backstage/create-app@latest`
-- Auth: `guest: {}` (no real provider)
-- DB: SQLite in-memory (dev config)
-- GitHub integration: PAT via `GITHUB_TOKEN` env var
-- Catalog: points at feature-flag-service catalog-info.yaml
-- Templates: none written. TechDocs: local builder + local publisher
-- Not containerized. Not pushed to cluster. No CI.
-
-### idp-infra Local Changes (2026-09-24 - uncommitted)
-- `20-data/main.tf`: Switched RDS from `db.t4g.micro` + `gp3` to `db.t3.micro` + `gp2` due to AWS capacity limits.
-- `30-cluster/main.tf`: Created cluster layout. Switched EKS node group from SPOT `t3.medium` to ON_DEMAND `t4g.small` (AL2023_ARM_64_STANDARD) due to strict Free-Tier Spot limitations. Updated ALB IAM policy URL to v2.11.0.
-- `00-bootstrap/main.tf`: Added well-known AWS thumbprints to GitHub OIDC provider to prevent STS rejection.
-- `scripts/verify-empty.py`: Enhanced logic to filter out false positives (NAT gateways in "deleted" state, KMS keys in "PendingDeletion") and explicitly print free resources as INFO.
-- `test_latency.py`: Added script to verify latency A/B test (unauthenticated /health and authenticated /api/v1/flags via ALB).
-
-### feature-flag-service Commits (CI-related, 2026-09-22)
-| Commit | Message |
-|---|---|
-| 907c464 | feat(ci): rewrite CI for ECR/OIDC + GitHub App + Trivy (Step 22) |
-| c26d7d4 | ci: fix EKS exec format error by building arm64 images | feat(ci): rewrite CI for ECR/OIDC + GitHub App + Trivy (Step 22) |
-
----
-
-## 6. What Is Done — Steps 1–23
+## 6. What Is Done — Steps 1–23 (history; current status is in section 0a)
 
 ### Application Layer (Steps 1–9) ✅ All Complete
 | Step | What | Key files |
@@ -237,7 +252,7 @@ idp-gitops/
 6. Argo CD selfHeal fighting manual `kubectl apply`.
 7. conntrack stickiness on sequential in-cluster requests (not yet in README — add in Section 14).
 
-### Infrastructure Phase (Steps 17–23) 🚧 IN PROGRESS
+### Infrastructure Phase (Steps 17–23) ✅ Complete
 
 #### Step 17 — AWS Account Hygiene ✅
 - IAM user idp-admin confirmed (NEVER root)
@@ -255,7 +270,7 @@ Resources created:
 - **DynamoDB table** `idp-tf-locks`: PAY_PER_REQUEST, hash key LockID
 - **GitHub OIDC Provider**: thumbprint fetched dynamically via `tls_certificate` data source (NOT hardcoded — survives GitHub cert rotation)
 - **IAM Role** `idp-github-ci`:
-  - Trust: StringEquals `token.actions.githubusercontent.com:sub` = `repo:DSurya11/feature-flag-service:ref:refs/heads/main`
+  - Trust: StringEquals on `sub` for exact repo + main branch (current subjects: section 11)
   - Trust: StringEquals `token.actions.githubusercontent.com:aud` = `sts.amazonaws.com`
   - No wildcards anywhere
   - Inline policy: `GetAuthorizationToken` on `*` (AWS requirement — account-level), all other ECR actions scoped to `arn:aws:ecr:ap-south-1:693906847772:repository/feature-flag-service`
@@ -276,13 +291,13 @@ Applied and destroyed 2026-09-22. Option B lifecycle: full destroy each session.
 Committed and pushed 2026-09-22. Commit: 907c464 to feature-flag-service repo.
 - CI refactored to use GitHub App for env-config updates, ECR registry, and strictly OIDC auth (no static credentials).
 
-#### Step 23 — EKS Cluster Layer (30-cluster) 🚧 IN PROGRESS
+#### Step 23 — EKS Cluster Layer (30-cluster) ✅
 - `main.tf` written utilizing `terraform-aws-modules/eks/aws ~> 20.0` (Avoided v21 due to known `var.partition` planning freeze bug).
 - **Session 3 Blockers Overcome:**
   - Account strictly blocks non-Free-Tier instance types (like `t3.medium`) from running as SPOT. 
   - Node group configuration altered to `t4g.small` (ARM Graviton) using `ON_DEMAND` capacity.
   - Required specifying `ami_type = "AL2023_ARM_64_STANDARD"` because EKS rejects mismatched architectures.
-- Current Status: Terraform state forcefully cleaned of failed spot requests. `make down` successfully wiped AWS to $0.00. Ready for a clean `make up`.
+- Completed in Sessions 4-5: EKS 1.35, t4g.small ON_DEMAND nodes, prefix delegation (maxPods 110), metrics-server add-on.
 
 ---
 
@@ -290,50 +305,28 @@ Committed and pushed 2026-09-22. Commit: 907c464 to feature-flag-service repo.
 
 ```
 idp-infra/
-  00-bootstrap/     S3 state bucket, DynamoDB lock, GitHub OIDC provider,
-  │                 IAM role for CI. Uses LOCAL state (chicken-and-egg).
-  │                 NEVER DESTROYED.
-  │
-  10-network/       VPC 10.0.0.0/16, 2 AZs (ap-south-1a + ap-south-1b),
-  │                 public + private subnets, IGW, route tables, SGs.
-  │                 NAT Gateway NOT here — it is in layer 30 (destroyed each session).
-  │                 Backend: S3.  KEEP UP (costs $0).
-  │
-  20-data/          RDS db.t3.micro PostgreSQL 16, Secrets Manager x4.
-  │                 NO ElastiCache here — moved to 30-cluster (no stop API).
-  │                 Backend: S3.
-  │                 DESTROYED each session (Option B).
-  │
-  15-registry/      ECR repo + lifecycle policy. PERMANENT (not in make up/down). Apply once by hand:
-  │                 terraform -chdir=15-registry init && terraform -chdir=15-registry apply
-  │
-  30-cluster/       EKS cluster, managed node group (ON_DEMAND t4g.small), NAT Gateway, IRSA roles,
-  │                 ECR repos, ElastiCache Valkey.
-  │                 Backend: S3.
-  │                 DESTROYED each session (most expensive layer).
-  │                 WRITTEN (Steps 23/24/25 infra). Prefix delegation + force_delete added Session 5.
-  │
-  40-platform/      Argo CD + External Secrets Operator Helm releases. Everything else installed BY Argo CD.
-  │                 Backend: S3.
-  │                 DESTROYED each session (goes with layer 30).
-  │                 WRITTEN.
-  │
-  90-legacy-neon/   Neon Terraform migrated from app repo.
-                    NEVER destroy until A/B latency experiment is complete.
-                    Backend: S3.
-  
-  modules/
-    vpc/            VPC, subnets, IGW, route tables, 4 SGs
-    eks/            NOT YET WRITTEN
-    rds/            NOT YET WRITTEN
-    irsa-role/      NOT YET WRITTEN
-  
-  scripts/
-    verify-empty.py  Billable resource checker for make verify-empty
-  
+  00-bootstrap/     S3 state bucket, DynamoDB table (unused, Finding 49), GitHub OIDC provider,
+  │                 CI roles idp-github-ci (exact repos) + idp-service-ci (template services,
+  │                 ECR svc/* only). LOCAL state (chicken-and-egg). NEVER destroyed.
+  10-network/       VPC 10.0.0.0/16, 2 AZs, public + private subnets, IGW, route tables, 4 SGs.
+  │                 No NAT here (it is in 30). PERMANENT ($0).
+  15-registry/      ECR feature-flag-service (keep 20) + idp-portal (keep 5). PERMANENT.
+  │                 Not part of make up/down. (Template services create ECR svc/<name> from CI.)
+  20-data/          RDS db.t3.micro PostgreSQL 16 (gp2), Secrets Manager: idp/db-creds,
+  │                 idp/jwt-secret (generated), idp/grafana-admin, idp/backstage-github-app.
+  │                 Destroyed every session.
+  30-cluster/       EKS 1.35 + managed node group (ON_DEMAND t4g.small, prefix delegation),
+  │                 metrics-server add-on, NAT Gateway, ElastiCache Valkey + idp/valkey secret,
+  │                 IRSA roles idp-eso + idp-alb-controller. Destroyed every session.
+  40-platform/      Helm: AWS Load Balancer Controller 3.5.0, ESO 0.10.3, Argo CD 10.9.2 (v3.5.3),
+  │                 plus the root Application (app-of-apps -> idp-gitops/platform/argocd-apps).
+  │                 Destroyed every session.
+  90-legacy-neon/   Neon project from Step 11 (baseline of the latency A/B). Never destroyed.
+  modules/vpc/      the only module (used by 10-network)
+  scripts/          down.sh (make down), verify-empty.py, load-local-secrets.sh
+  tests/            rollout-load.js (k6 zero-downtime test)
+  test_latency.py   latency A/B (Step 21)
   Makefile          make up / make down / make verify-empty / make neon-plan
-  .gitignore
-  README.md
 ```
 
 ### Backend Config (per layer, all except 00-bootstrap)
@@ -368,190 +361,108 @@ provider "aws" {
 
 ## 8. Session Lifecycle Commands (Option B — Full Destroy)
 
-### make up (session start, ~20-27 minutes total)
-```bash
-cd /home/surya/projects/idp-infra
-make up
+### make up (~21-27 min, measured)
 ```
-
-What it does (in order):
+[1/4] 20-data apply            RDS + 4 secrets (DB password and JWT key generated by Terraform)
+      scripts/load-local-secrets.sh
+                               ~/.idp/{backstage-app.env, backstage-app.pem, backstage-client-secret}
+                               -> idp/backstage-github-app (via stdin; warns and skips if missing)
+[2/4] 30-cluster apply         EKS, nodes, NAT, Valkey, IRSA roles
+[3/4] aws eks update-kubeconfig --name idp-cluster
+[4/4] 40-platform apply        ALB controller, ESO, Argo CD, root app
+      then waits (600s) for application/root to be Healthy
 ```
-[1/4] terraform init -input=false + apply -auto-approve 20-data    (~5-7 min)
-      Creates: fresh RDS (empty DB), 4 Secrets Manager secrets with placeholders
-      Note: new auto-generated 32-char DB password each session
+No manual steps after it: secrets come from ESO, DB migrations run as an Argo CD Sync hook.
+Before `make up`: `curl -s https://checkip.amazonaws.com` must match `allowed_cidr` in
+30-cluster/variables.tf (the EKS API is restricted to your IP).
 
-[2/4] terraform init -input=false + apply -auto-approve 30-cluster  (~12-15 min)
-      Creates: EKS cluster, NAT Gateway, ElastiCache Valkey, ECR repos, IRSA roles
-
-[3/4] aws eks update-kubeconfig --name idp-cluster --region ap-south-1 --profile idp
-
-[4/4] terraform init -input=false + apply -auto-approve 40-platform (~3-5 min)
-      Creates: Argo CD
-      Waits: kubectl wait --for=condition=Healthy application/root -n argocd --timeout=300s
+### make down (~16 min) = scripts/down.sh
 ```
-
-**AFTER make up completes — MANUALLY update idp/jwt-secret:**
-```bash
-# The JWT secret defaults to placeholder "REPLACE_ME_before_first_cluster_up"
-# Before the app can auth any user, update it:
-aws secretsmanager put-secret-value \
-  --secret-id idp/jwt-secret \
-  --secret-string '{"secret":"your-real-jwt-secret-here"}' \
-  --profile idp
+[0/3] delete the root Argo app (cascade -> Ingresses -> the ALB controller deletes the ALB),
+      then delete any leftover ALBs / target groups in the VPC
+[1/3] destroy 40-platform   [2/3] destroy 30-cluster   [3/3] destroy 20-data
+then  verify-empty.py
 ```
+Exits non-zero if ANY step failed. Watch it finish; if interrupted, run it again (Finding 37).
 
-### make down (session end — ALWAYS run before closing laptop)
-```bash
-cd /home/surya/projects/idp-infra
-make down
-```
+Lost every session: RDS data (flags, users, audit log), secrets, cluster state, Valkey cache.
+Survives: permanent layers (section 9), Git, Terraform state, ECR images.
 
-What it does (in order):
-```
-[1/3] terraform destroy -auto-approve 40-platform     (Argo CD, ESO)
-[2/3] terraform destroy -auto-approve 30-cluster      (EKS, NAT, Valkey, ECR)
-[3/3] terraform destroy -auto-approve 20-data         (RDS ~5 min, Secrets instant)
-      Then: make verify-empty → MUST show OK: $0.00
-```
-
-What is permanently lost:
-- All feature flags, users, JWT secrets, audit logs in RDS
-- All 4 Secrets Manager secrets
-- All K8s workloads, configs, deployments
-- Valkey cache contents
-
-What survives:
-- VPC, subnets, SGs, IGW, route tables (free — kept permanently)
-- S3 state bucket, DynamoDB lock table (bootstrap — kept permanently)
-- IAM role, OIDC provider (bootstrap — kept permanently)
-- Neon project (90-legacy-neon — kept permanently)
-- All code in Git repos
-- Terraform state files in S3
-- ECR images (if kept — lifecycle policy retains last 20)
-
-### make verify-empty (safety check — must pass before closing laptop)
-```bash
-cd /home/surya/projects/idp-infra
-make verify-empty
-```
-
-Runs `scripts/verify-empty.py` which:
-1. Calls `aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=idp`
-2. Gets all ARNs with Project=idp tag
-3. Filters out free resource types.
-4. *Script explicitly logs free/pending resources as an INFO block to ensure complete visibility without triggering a failure.*
-5. Exit 0 + "OK: $0.00" if no billable resources remain
-6. Exit 1 + list of billable ARNs if any remain
-
----
+### make verify-empty
+`scripts/verify-empty.py`: (1) tagging API for `Project=idp` and `Project=ff-idp`, with free and
+pending-deletion resources listed as INFO; (2) direct per-service checks (EKS, EC2, NAT, ELB,
+RDS, ElastiCache, Secrets Manager, EIPs...) that do not depend on tags. Exit 0 = $0.00.
 
 ## 9. All Permanent AWS Resources (Live Right Now, Never Destroyed)
 
-| Resource | ID / Name | Notes |
+| Resource | ID / Name | Layer |
 |---|---|---|
-| S3 state bucket | idp-tfstate-693906847772 | ~$0.00000078/mo |
-| DynamoDB lock table | idp-tf-locks | PAY_PER_REQUEST ($0 idle) |
-| GitHub OIDC Provider | arn:aws:iam::693906847772:oidc-provider/token... | Free |
-| IAM Role | idp-github-ci | Free |
-| VPC | vpc-0adcac5ff98908f3b (10.0.0.0/16) | Free |
-| Public subnet ap-south-1a | subnet-0acd17491022c527e (10.0.1.0/24) | Free |
-| Public subnet ap-south-1b | subnet-01c8679e5fd4bf485 (10.0.2.0/24) | Free |
-| Private subnet ap-south-1a | subnet-038e07909e55745b9 (10.0.11.0/24) | Free |
-| Private subnet ap-south-1b | subnet-0ffe3fe2c3c0167cd (10.0.12.0/24) | Free |
-| Internet Gateway | igw-0497cc66bfde6497a | Free |
-| Public Route Table | rtb-06be6c352335c4528 | Free |
-| Private Route Table 1a | rtb-05a36c795c8121544 | Free |
-| Private Route Table 1b | rtb-0a792e4f26cc2f99e | Free |
-| SG: sg-nodes | sg-06abea709f3058525 | Free |
-| SG: sg-rds | sg-0ef2f1b70cac77926 | Free |
-| SG: sg-elasticache | sg-070a99d09310cf378 | Free |
-| SG: sg-alb | sg-04b76d4484453aa8f | Free |
-| Neon project | steep-resonance-33416603 | Baseline |
+| S3 state bucket | idp-tfstate-693906847772 (versioned, S3-native lock files) | 00 |
+| DynamoDB table | idp-tf-locks (unused, $0) | 00 |
+| GitHub OIDC provider | oidc-provider/token.actions.githubusercontent.com | 00 |
+| IAM roles | idp-github-ci, idp-service-ci | 00 |
+| VPC | vpc-0adcac5ff98908f3b (10.0.0.0/16) | 10 |
+| Subnets | public subnet-0acd17491022c527e (1a), subnet-01c8679e5fd4bf485 (1b); private subnet-038e07909e55745b9 (1a), subnet-0ffe3fe2c3c0167cd (1b) | 10 |
+| IGW / route tables | igw-0497cc66bfde6497a; rtb-06be6c352335c4528 (public), rtb-05a36c795c8121544, rtb-0a792e4f26cc2f99e (private) | 10 |
+| Security groups (recreated in the rename) | nodes sg-00fb3157d1737b8ae, rds sg-07f548e791862a77a, elasticache sg-06e3a1f4faf783e45, alb sg-053fa6f01bf151f17 | 10 |
+| ECR | feature-flag-service, idp-portal (+ svc/<name> created by template CI) | 15 |
+| Neon project | steep-resonance-33416603 | 90 |
+| **Backups to delete** | S3 ff-idp-tfstate-693906847772, DynamoDB ff-idp-tf-locks (unmanaged since the rename) | - |
 
----
+All free except ECR storage (~$0.10/GB-month).
 
 ## 10. Ephemeral Resources (Destroyed Each Session, Recreated Each make up)
 
 | Resource | Layer | Notes |
 |---|---|---|
-| RDS idp-postgres | 20-data | db.t3.micro, PostgreSQL 16, 20GB gp2, private subnets |
-| Secret idp/db-creds | 20-data | Auto-generated 32-char password |
-| Secret idp/jwt-secret | 20-data | Placeholder — UPDATE MANUALLY each session |
-| Secret idp/grafana-admin | 20-data | Placeholder |
-| Secret idp/backstage-github-app | 20-data | Placeholder — populated Step 29 |
-| ElastiCache idp-valkey | 30-cluster | engine=valkey, cache.t4g.micro |
-| EKS cluster idp-cluster | 30-cluster | Created/destroyed each session |
-| NAT Gateway | 30-cluster | Created/destroyed each session |
-| ECR repo: feature-flag-service | 30-cluster | IMMUTABLE tags, scan on push, force_delete=true |
-| Argo CD + ESO | 40-platform | Created/destroyed each session |
-
----
+| RDS idp-postgres | 20-data | db.t3.micro, PostgreSQL 16, 20GB gp2, SSL enforced (Finding 47) |
+| Secret idp/db-creds | 20-data | generated password; url uses psycopg2 driver |
+| Secret idp/jwt-secret | 20-data | generated (`random_password`) |
+| Secret idp/grafana-admin | 20-data | placeholder (Step 34) |
+| Secret idp/backstage-github-app | 20-data | placeholder, filled from `~/.idp` by make up |
+| NAT Gateway + EIP | 30-cluster | |
+| ElastiCache idp-valkey + secret idp/valkey | 30-cluster | cache.t4g.micro, engine valkey |
+| EKS idp-cluster + node group | 30-cluster | 1.35, t4g.small ON_DEMAND |
+| IAM roles idp-eso, idp-alb-controller | 30-cluster | IRSA |
+| ALB controller, ESO, Argo CD, root app | 40-platform | |
+| ALB (IngressGroup `idp`) | created by the ALB controller | deleted by down.sh step 0 |
 
 ## 11. CI/CD State
 
-### Current CI Workflow Structure (post-Step-22 rewrite)
+### feature-flag-service (.github/workflows/ci.yml)
+- `concurrency: ci-<event>-<sha>` (Finding 48).
+- `test` (ubuntu-latest, Postgres/Redis services, pytest) on every push and PR.
+- `build-and-push` (main only, `ubuntu-24.04-arm`): OIDC -> role idp-github-ci -> skip if the
+  SHA tag already exists in ECR -> buildx arm64 push (provenance=false) -> Trivy gate
+  (HIGH/CRITICAL with fix = fail; Trivy authenticates to ECR, TRIVY_PLATFORM=linux/arm64).
+- `update-env-config`: GitHub App token (ff-idp-ci-bot, repo idp-gitops only) -> set `newTag` in
+  `apps/feature-flag-service/overlays/dev/kustomization.yaml` -> commit -> push with
+  rebase-and-retry (3 tries).
 
-```yaml
-jobs:
-  test:
-    # Always runs (not just main branch)
-    # Sets up Python, installs deps, runs pytest --tb=short -q
-    
-  build-and-push:
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      id-token: write   # OIDC — required
-      contents: read
-    steps:
-      - aws-actions/configure-aws-credentials@v4
-        # role: arn:aws:iam::693906847772:role/idp-github-ci
-        # region: ap-south-1
-      - aws-actions/amazon-ecr-login@v2
-      - docker build -t 693906847772.dkr.ecr.ap-south-1.amazonaws.com/feature-flag-service:${{ github.sha }} .
-      - docker push ...:${{ github.sha }}    # SHA ONLY — no :latest
-      - aquasecurity/trivy-action@0.28.0
-        # exit-code: '1', severity: HIGH,CRITICAL, ignore-unfixed: true
-    
-  update-env-config:
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - actions/create-github-app-token@v1
-        # app-id: ${{ secrets.FF_IDP_CI_BOT_APP_ID }}
-        # private-key: ${{ secrets.FF_IDP_CI_BOT_PRIVATE_KEY }}
-      - checkout idp-gitops using token
-      - # Dual-mode detection:
-        if [ -f "apps/feature-flag-service/overlays/dev/kustomization.yaml" ]; then
-          # Post-Step-27 Kustomize mode
-          cd apps/feature-flag-service/overlays/dev && kustomize edit set image ...
-        else
-          # Current flat mode
-          sed -i "s|image: .*feature-flag-service:.*|image: ...:${{ github.sha }}|" api-deployment.yaml
-        fi
-      - git commit + push
-```
+### idp-portal (.github/workflows/ci.yml)
+Same shape on `ubuntu-24.04-arm`: yarn install/tsc/build:backend -> docker build -> push unless
+the tag exists -> Trivy (local image) -> bot bumps `apps/idp-portal/overlays/dev`.
+`concurrency: ci-<sha>`.
 
-ECR image tag format: `693906847772.dkr.ecr.ap-south-1.amazonaws.com/feature-flag-service:<github-sha>`
+### Services created by the python-service template
+Their CI (copied from `templates/python-service/skeleton/.github/workflows/ci.yml`) assumes
+`idp-service-ci`, creates ECR `svc/<name>` on first run and pushes the image. The deploy
+config is added by the template's PR to idp-gitops, pinned to the first commit SHA.
 
-### OIDC Trust Policy (must never change)
-```json
-{
-  "StringEquals": {
-    "token.actions.githubusercontent.com:sub": "repo:DSurya11/feature-flag-service:ref:refs/heads/main",
-    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-  }
-}
-```
-Never use wildcards (`repo:*:*`). Any GitHub repo could assume the role.
+### OIDC trust (00-bootstrap)
+`sub` now embeds immutable IDs: `repo:DSurya11@162597218/<repo>@<repo_id>:ref:refs/heads/main`.
+- idp-github-ci, StringEquals: `feature-flag-service@1368152185`, `idp-portal@1389614591`.
+- idp-service-ci, StringLike: `repo:DSurya11@162597218/*:ref:refs/heads/main` (user-approved
+  exception; the role can only touch ECR `svc/*`).
+Renaming a repo changes `sub` (the name is in it): update the trust before pushing (Finding 50).
 
-### GitHub App (ff-idp-ci-bot)
-- App ID: `5034584`
-- Private key: `/home/surya/Downloads/ff-idp-ci-bot.2026-09-22.private-key.pem` (local only)
-- Installed on: `idp-gitops` repo only
-- GitHub secrets on feature-flag-service: `FF_IDP_CI_BOT_APP_ID`, `FF_IDP_CI_BOT_PRIVATE_KEY`
+### GitHub Apps
+| App | ID | Installed on | Used by |
+|---|---|---|---|
+| ff-idp-ci-bot | 5034584 | idp-gitops | CI bumps. Secrets `FF_IDP_CI_BOT_APP_ID` / `FF_IDP_CI_BOT_PRIVATE_KEY` in feature-flag-service and idp-portal |
+| ff-idp-backstage | 5088974 (client Iv23lij5ChFBE8WFtPEH) | all DSurya11 repos | Backstage catalog + scaffolder. Credentials in `~/.idp` (700/600), never in Git or TF state. Actions: read not granted yet (Step 31) |
 
----
+App names were left un-renamed (display only; CI uses the App ID).
 
 ## 12. Key Terraform Snippets
 
@@ -883,7 +794,7 @@ Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itse
 
 ### PHASE B — Cluster (Cost Starts)
 
-#### Step 23 — EKS Cluster (30-cluster) — IN PROGRESS
+#### Step 23 — EKS Cluster (30-cluster) — DONE (original spec below)
 
 File to create: `/home/surya/projects/idp-infra/30-cluster/main.tf`
 
@@ -976,7 +887,7 @@ aws eks describe-cluster --name idp-cluster --profile idp --query 'cluster.versi
 
 ---
 
-#### Step 24 — External Secrets Operator + IRSA
+#### Step 24 — External Secrets Operator + IRSA — DONE (original spec below)
 
 ```hcl
 data "aws_iam_policy_document" "eso" {
@@ -1026,7 +937,7 @@ kubectl get secret feature-flag-secrets -n feature-flag-dev \
 
 ---
 
-#### Step 25 — Ingress: ALB Controller + No-Domain Setup
+#### Step 25 — Ingress: ALB Controller + No-Domain Setup — DONE (original spec below)
 
 **ONE shared ALB via IngressGroup (not three separate ALBs):**
 ```yaml
@@ -1194,7 +1105,7 @@ Strongest stories in order:
 - Never echo plaintext secret values — use SHA256 checksums
 - Never leave EKS running unattended — make down before closing laptop, make verify-empty must pass
 - Never use `Resource: "*"` in IAM policies for ESO or any scoped role
-- Never use wildcards in OIDC trust policy
+- Never use wildcards in OIDC trust policy (single approved exception: idp-service-ci, owner-ID scoped, ECR svc/* only)
 - Never use engine="redis" — use engine="valkey"
 - Never hardcode OIDC thumbprint — use tls_certificate data source
 - Never use em-dashes in AWS resource description fields — use ASCII hyphens
@@ -1206,6 +1117,9 @@ Strongest stories in order:
 - Never forget `force_delete = true` on ECR repositories intended for ephemeral lab teardown.
 - Never rely solely on dynamic OIDC thumbprints without static fallbacks for GitHub Actions.
 - Never deploy heavy system components (ArgoCD, ESO) to `t4g.small` nodes without VPC CNI Prefix Delegation enabled.
+- Never add a Terraform backend without `use_lockfile = true` (state was silently unlocked until Finding 49).
+- Never rename a GitHub repo that CI uses without updating the OIDC trust `sub` first.
+- Never put GitHub App secrets or private keys in Git, chat or TF state; they live in `~/.idp`.
 
 ---
 
