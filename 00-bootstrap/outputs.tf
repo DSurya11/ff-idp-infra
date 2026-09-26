@@ -22,3 +22,8 @@ output "github_ci_role_arn" {
   description = "ARN of the IAM role assumed by GitHub Actions CI"
   value       = aws_iam_role.github_ci.arn
 }
+
+output "service_ci_role_arn" {
+  description = "ARN of the IAM role for template-created services (svc/* ECR only)"
+  value       = aws_iam_role.service_ci.arn
+}

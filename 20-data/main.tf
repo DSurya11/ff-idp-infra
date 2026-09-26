@@ -214,16 +214,19 @@ resource "aws_secretsmanager_secret_version" "grafana_admin" {
 # Backstage GitHub App — placeholder; populated in Step 29
 resource "aws_secretsmanager_secret" "backstage_github_app" {
   name                    = "ff-idp/backstage-github-app"
-  description             = "Backstage GitHub App credentials (appId + privateKey)"
+  description             = "Backstage GitHub App ff-idp-backstage (appId, clientId, clientSecret, privateKey)"
   recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "backstage_github_app" {
   secret_id = aws_secretsmanager_secret.backstage_github_app.id
   secret_string = jsonencode({
-    appId         = "REPLACE_ME"
-    privateKey    = "REPLACE_ME"
-    webhookSecret = "REPLACE_ME"
+    # Placeholders only. Real values are loaded from ~/.ff-idp by
+    # scripts/load-local-secrets.sh during `make up` (ignore_changes below keeps them).
+    appId        = "REPLACE_ME"
+    clientId     = "REPLACE_ME"
+    clientSecret = "REPLACE_ME"
+    privateKey   = "REPLACE_ME"
   })
 
   lifecycle {

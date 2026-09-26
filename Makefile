@@ -44,6 +44,7 @@ up:
 	@echo "==> [1/4] Creating data layer (RDS + Secrets Manager)..."
 	terraform -chdir=20-data init -input=false
 	terraform -chdir=20-data apply -auto-approve
+	@./scripts/load-local-secrets.sh
 	@echo ""
 	@echo "==> [2/4] Creating cluster layer (EKS + NAT + Valkey)..."
 	terraform -chdir=30-cluster init -input=false

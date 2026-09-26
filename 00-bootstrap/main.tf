@@ -132,8 +132,8 @@ resource "aws_dynamodb_table" "tfstate_locks" {
 # The thumbprint is fetched dynamically from GitHub's current TLS cert.
 
 resource "aws_iam_openid_connect_provider" "github_actions" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
   # AWS occasionally updates required thumbprints. These are the current ones + the dynamic one.
   thumbprint_list = [
     "6938fd4d98bab03faadb97b34396831e3780aea1",
@@ -197,9 +197,9 @@ resource "aws_iam_role" "github_ci" {
 data "aws_iam_policy_document" "github_ci_ecr" {
   # GetAuthorizationToken is account-level — cannot be scoped to a specific repo
   statement {
-    sid     = "ECRAuth"
-    effect  = "Allow"
-    actions = ["ecr:GetAuthorizationToken"]
+    sid       = "ECRAuth"
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
     resources = ["*"]
   }
 
@@ -228,4 +228,82 @@ resource "aws_iam_role_policy" "github_ci_ecr" {
   name   = "ecr-push"
   role   = aws_iam_role.github_ci.id
   policy = data.aws_iam_policy_document.github_ci_ecr.json
+}
+
+# ─── IAM role: ff-idp-service-ci (Step 30 golden path) ───────────────────────
+# Assumed by CI of services CREATED BY THE BACKSTAGE TEMPLATE. Those repos do not exist
+# when this is applied, so their exact subjects cannot be listed like ff-idp-github-ci's.
+#
+# DELIBERATE, NARROW EXCEPTION to "no wildcards in OIDC trust" (user decision 2026-09-27):
+#   - trust: any repo whose owner is account ID 162597218 (immutable - a renamed or
+#     re-registered "DSurya11" cannot match), main branch only
+#   - blast radius: this role can ONLY create and push to ECR repos under svc/*. It cannot
+#     touch feature-flag-service or idp-portal images, or anything outside ECR.
+# The exact-match role above is unchanged.
+
+data "aws_iam_policy_document" "service_ci_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:DSurya11@162597218/*:ref:refs/heads/main"]
+    }
+  }
+}
+
+resource "aws_iam_role" "service_ci" {
+  name               = "ff-idp-service-ci"
+  assume_role_policy = data.aws_iam_policy_document.service_ci_trust.json
+  description        = "CI for template-created services: create/push ECR repos under svc/* only"
+}
+
+data "aws_iam_policy_document" "service_ci_ecr" {
+  statement {
+    sid       = "ECRAuth"
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "SvcReposOnly"
+    effect = "Allow"
+    actions = [
+      "ecr:CreateRepository",
+      "ecr:DescribeRepositories",
+      "ecr:PutLifecyclePolicy",
+      "ecr:TagResource",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:PutImage",
+      "ecr:InitiateLayerUpload",
+      "ecr:UploadLayerPart",
+      "ecr:CompleteLayerUpload",
+      "ecr:DescribeImages",
+      "ecr:BatchGetImage",
+      "ecr:GetDownloadUrlForLayer",
+    ]
+    resources = [
+      "arn:aws:ecr:ap-south-1:${data.aws_caller_identity.current.account_id}:repository/svc/*",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "service_ci_ecr" {
+  name   = "ecr-svc-only"
+  role   = aws_iam_role.service_ci.id
+  policy = data.aws_iam_policy_document.service_ci_ecr.json
 }
