@@ -26,11 +26,17 @@ export const options = {
   },
 };
 
+// Log every failure with wall-clock time, endpoint and status, so failures can be
+// lined up against rollout / drain events (0 = connection-level error).
+function logFail(r, ep) {
+  if (r.status !== 200) console.warn(`FAIL ${new Date().toISOString()} ${ep} status=${r.status} err=${r.error_code || ''}`);
+}
+
 export default function () {
   const r1 = http.get(`${BASE}/health`, { tags: { ep: 'health' } });
-  check(r1, { 'health 200': (r) => r.status === 200 });
+  check(r1, { 'health 200': (r) => r.status === 200 }); logFail(r1, 'health');
   const r2 = http.post(`${BASE}/evaluate`,
     JSON.stringify({ flag_name: 'rollout-test', user_id: `u${__ITER % 1000}`, environment: 'dev' }),
     Object.assign({ tags: { ep: 'evaluate' } }, AUTH));
-  check(r2, { 'evaluate 200': (r) => r.status === 200 });
+  check(r2, { 'evaluate 200': (r) => r.status === 200 }); logFail(r2, 'evaluate');
 }
