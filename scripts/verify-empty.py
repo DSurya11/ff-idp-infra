@@ -136,6 +136,11 @@ def main():
             if state_check.stdout.strip() == "deleted":
                 free_or_pending.append(f"{arn} (Deleted state)")
                 continue
+            # AWS purges deleted gateways after ~1h, but the Tagging API keeps returning the
+            # ARN. describe-nat-gateways then fails with NatGatewayNotFound: gone, so free.
+            if "NatGatewayNotFound" in state_check.stderr:
+                free_or_pending.append(f"{arn} (Purged by AWS - ghost tag)")
+                continue
 
         billable.append(arn)
 

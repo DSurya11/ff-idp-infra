@@ -685,7 +685,9 @@ resource "aws_db_instance" "postgres" {
 **Finding 31: Prefix delegation works.** `vpc-cni` addon with `ENABLE_PREFIX_DELEGATION` + `before_compute`, plus kubelet `maxPods: 110` via `cloudinit_pre_nodeadm`: both nodes report 110 allocatable pods (was 11).
 **Finding 32: Trivy could not scan the pushed image.** buildx pushes without loading into the local daemon, and the image is arm64 on an amd64 runner. Fix: `TRIVY_USERNAME/PASSWORD` from `aws ecr get-login-password`, `TRIVY_PLATFORM=linux/arm64`, and `--provenance=false` on the build.
 **Finding 33: The CI bot could not update env-config - FIXED 2026-09-26.** The `ff-idp-ci-bot` GitHub App existed but had 0 installations (`GET /app` showed `installations_count: 0`; token minting returned 404). Installed on `feature-flag-service-env-config` only; verified by an empty-commit CI run: all 3 jobs green and `ff-idp-ci-bot[bot]` committed the new SHA. Diagnostic that works: sign an app JWT with the private key and call `GET /app/installations` (never print the key).
-**Finding 34: Fresh RDS has no schema; the app does not migrate itself.** AUTOMATED (implemented 2026-09-26, live test pending - verify on next `make up`): `eks-db-migrate-job.yaml` in env-config is an Argo CD Sync-hook Job (`alembic upgrade head`) on sync-wave 1; the Deployment is wave 2, so it only starts after the schema exists; ExternalSecret/namespace are wave 0. CI bumps the image in both `eks-api-deployment.yaml` and `eks-db-migrate-job.yaml`. Fallback by hand: `kubectl exec -n feature-flag-dev deploy/feature-flag-api -- sh -c "cd /app; alembic upgrade head"`.
+**Finding 34: Fresh RDS has no schema; the app does not migrate itself.** AUTOMATED and VERIFIED LIVE 2026-09-26: `eks-db-migrate-job.yaml` in env-config is an Argo CD Sync-hook Job (`alembic upgrade head`) on sync-wave 1; the Deployment is wave 2; ExternalSecret/namespace wave 0. Evidence: job ran `initial_schema` and completed 13:12:39Z, API pods created 13:12:39-40Z (after), `/health` 200 and flag create/evaluate work with no manual alembic. A second sync re-ran the Job as a no-op (already at head) and did not restart the API pods. CI bumps the image in both `eks-api-deployment.yaml` and `eks-db-migrate-job.yaml`. Fallback by hand: `kubectl exec -n feature-flag-dev deploy/feature-flag-api -- sh -c "cd /app; alembic upgrade head"`.
+**Finding 36: Tag API ghosts purged NAT gateways.** ~1h after deletion AWS purges a NAT gateway, but `resourcegroupstaggingapi` still lists its ARN and `describe-nat-gateways --nat-gateway-ids` fails with `NatGatewayNotFound`. `verify-empty.py` treated that as billable (false alarm, make down exited non-zero). Fixed: NotFound = free. The direct service checks were empty the whole time.
+**Finding 37: An interrupted `make down` leaves billable resources.** A teardown that was cut off (session/process ended) left the NAT gateway, its EIP and RDS running (~$0.09/hr) while EKS and Valkey were already gone. `make down` is idempotent: just re-run it. After ANY interruption, run `make verify-empty` (or query EKS/NAT/RDS directly) before closing the laptop. Do not start `make down` and walk away from the session.
 **Finding 35: Argo root app YAML bug.** `syncOptions` must be under `spec.syncPolicy`, not `spec`. Root app is manual-sync and scoped by `directory.include` to the EKS manifests until Step 27.
 **Finding 27: Spend audit.** As of 2026-09-26, ~$1 of credits used over 3 sessions, consistent with the ~$0.73/session model. Cost Explorer lags ~24h and shows ~$0; use Billing > Credits for the real balance. All regions checked empty.
 
@@ -814,11 +816,21 @@ DB miss p50 8.3 ms vs Redis hit p50 3.9 ms => Postgres fetch ~4 ms. ~48 ms floor
 
 ---
 
+## 16c. Measured timings (2026-09-26, clean runs, ap-south-1)
+| Operation | Time |
+|---|---|
+| `make up` (20-data + 30-cluster + 40-platform), first-try clean run | **26.6 min** (1596 s): RDS ~10 min, cluster ~10 min, platform ~6 min |
+| Sync -> API serving through ALB (incl. migration) | ~1 min after ALB provisioning |
+| `make down`, clean run | **16.4 min** (981 s); slowest steps: EKS node group drain, then control plane |
+Build+teardown overhead is ~43 min of billing (~$0.20) even for a 5-minute test.
+
+---
+
 ## 16b. Next Session Checklist (Session 6)
 Steps 23, 24, 25 are VERIFIED (2026-09-26): 2 nodes/110 pods, ESO recreates a deleted secret in ~5s with the same hash, ALB `/health` = 200 with exactly one ALB.
 1. `aws sts get-caller-identity --profile ff-idp`, then `make up` (15-registry is permanent and already applied; images persist).
 2. Sync the app: `kubectl patch application root -n argocd --type merge -p '{"operation":{"sync":{"syncOptions":["CreateNamespace=true","ServerSideApply=true"]}}}'`
-3. Set `ff-idp/jwt-secret` (JSON key `JWT_SECRET_KEY`, NOT `secret`) BEFORE syncing - generate randomly, never echo. Migrations now run automatically (Finding 34): confirm `kubectl get job -n feature-flag-dev` shows `feature-flag-db-migrate` Complete and the API pods start after it. If it fails, `kubectl logs job/feature-flag-db-migrate -n feature-flag-dev`.
+3. Set `ff-idp/jwt-secret` (JSON key `JWT_SECRET_KEY`, NOT `secret`) BEFORE syncing - generate randomly, never echo. Migrations run automatically and are verified (Finding 34). Sync command is in step 2.
 4. CI bot is fixed (Finding 33): pushing to Feature-Flag-Service main updates env-config automatically.
 5. Next steps: Step 26/27 (app-of-apps + env-config restructure; re-enable automated sync), Step 28 (HPA/PDB/rolling update).
 6. `make down` must exit 0 (it runs verify-empty). Check Billing > Credits.
