@@ -294,6 +294,11 @@ module "eks" {
     eks-pod-identity-agent = {
       most_recent = true
     }
+    # Resource metrics API (kubectl top, HorizontalPodAutoscaler). EKS does not ship it
+    # by default; the community add-on has arm64 builds for t4g nodes.
+    metrics-server = {
+      most_recent = true
+    }
   }
 
   eks_managed_node_groups = {
