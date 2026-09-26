@@ -33,7 +33,8 @@ scans both `Project=idp` and `Project=ff-idp` tags.
 ## 0a. Current State at a Glance (2026-09-27, end of Session 6)
 
 **AWS right now:** everything destroyed except the free permanent layers (00-bootstrap,
-10-network, 15-registry, 90-legacy-neon). `make verify-empty` passes: $0.00.
+10-network, 15-registry). `make verify-empty` passes: $0.00. Neon was retired 2026-09-27
+(Finding 51); RDS is the only database.
 
 | Step | Status |
 |---|---|
@@ -199,7 +200,7 @@ orphaned snapshots. Must be true. Set and verified in 20-data/main.tf.
 
 Cleaned 2026-09-27: one-off helper scripts, old transcripts, duplicate kubectl/terraform
 binaries, committed test `.db` files, the Step 11 `terraform/` folder in feature-flag-service
-(now idp-infra/90-legacy-neon) and Backstage's demo entities/template are gone. The only
+(later idp-infra/90-legacy-neon, retired 2026-09-27) and Backstage's demo entities/template are gone. The only
 untracked file left is feature-flag-service `tests/test_e2e.sh` (kind-era, input for Step 36).
 Interview write-ups live outside the repos in `~/projects/to read/`.
 Follow-up: feature-flag-service README still describes the kind/Neon/GHCR setup (Section 18).
@@ -279,6 +280,7 @@ Resources created:
 
 #### Step 19 — Neon State Migration (90-legacy-neon) ✅
 Applied 2026-09-22. State migrated from local to S3. Neon project untouched.
+Retired 2026-09-27 after the A/B finished: project destroyed, layer removed (Finding 51).
 
 #### Step 20 — Network Layer (10-network) ✅
 Applied 2026-09-22. Resources: 17 created. Cost: $0/month permanently.
@@ -323,12 +325,11 @@ idp-infra/
   40-platform/      Helm: AWS Load Balancer Controller 3.5.0, ESO 0.10.3, Argo CD 10.9.2 (v3.5.3),
   │                 plus the root Application (app-of-apps -> idp-gitops/platform/argocd-apps).
   │                 Destroyed every session.
-  90-legacy-neon/   Neon project from Step 11 (baseline of the latency A/B). Never destroyed.
   modules/vpc/      the only module (used by 10-network)
   scripts/          down.sh (make down), verify-empty.py, load-local-secrets.sh
   tests/            rollout-load.js (k6 zero-downtime test)
   test_latency.py   latency A/B (Step 21)
-  Makefile          make up / make down / make verify-empty / make neon-plan
+  Makefile          make up / make down / make verify-empty
 ```
 
 ### Backend Config (per layer, all except 00-bootstrap)
@@ -408,7 +409,6 @@ RDS, ElastiCache, Secrets Manager, EIPs...) that do not depend on tags. Exit 0 =
 | IGW / route tables | igw-0497cc66bfde6497a; rtb-06be6c352335c4528 (public), rtb-05a36c795c8121544, rtb-0a792e4f26cc2f99e (private) | 10 |
 | Security groups (recreated in the rename) | nodes sg-00fb3157d1737b8ae, rds sg-07f548e791862a77a, elasticache sg-06e3a1f4faf783e45, alb sg-053fa6f01bf151f17 | 10 |
 | ECR | feature-flag-service, idp-portal (+ svc/<name> created by template CI) | 15 |
-| Neon project | steep-resonance-33416603 | 90 |
 | **Backups to delete** | S3 ff-idp-tfstate-693906847772, DynamoDB ff-idp-tf-locks (unmanaged since the rename) | - |
 
 All free except ECR storage (~$0.10/GB-month).
@@ -639,6 +639,7 @@ resource "aws_db_instance" "postgres" {
 **Finding 48: Duplicate GitHub Actions runs + immutable ECR tags.** GitHub started two runs for one push; the second failed pushing the same immutable tag. idp-portal CI now has `concurrency: ci-${{ github.sha }}` with cancel-in-progress. feature-flag-service CI has the same latent issue (and "Re-run" of a green build would also fail on the immutable tag). FIXED 2026-09-27 in both repos: concurrency per event+SHA, "image already in ECR" check (re-runs skip the push), and a rebase-and-retry loop for the bot push to idp-gitops (several CI bots now push there). feature-flag-service build also moved to the native `ubuntu-24.04-arm` runner (no QEMU).
 **Finding 49: Terraform state was never locked.** The DynamoDB lock table existed, but no backend referenced it (`dynamodb_table` was only in this doc's example), so two concurrent applies could have corrupted state. Found during the rename migration. All backends now set `use_lockfile = true` (S3-native lock, TF >= 1.10; `dynamodb_table` is deprecated). Verified: a second concurrent plan fails with "Error acquiring the state lock".
 **Finding 50: Renaming a "permanent" layer is a state migration, not a find-and-replace.** S3 buckets and security groups cannot be renamed; IAM roles are replaced. Done as: `state rm` old bucket/table (kept as backup) -> apply new -> `s3 sync` state -> `init -reconfigure` per layer -> no-change plans prove code == AWS. The GitHub OIDC `sub` claim contains the repo NAME, so renaming a repo breaks CI until the trust policy matches (IDs are stable, names are not).
+**Finding 51: Neon retired.** The Step 21 A/B was the only reason to keep the Neon project (Step 11, `90-legacy-neon`). With the result recorded (section 16a: p95 ~970 ms -> ~20 ms), the project was destroyed and the layer, its tfvars (Neon API key) and `make neon-plan` removed. Nothing deployed ever read from Neon after Step 21 (DATABASE_URL comes from idp/db-creds = RDS).
 **Finding 27: Spend audit.** As of 2026-09-26, ~$1 of credits used over 3 sessions, consistent with the ~$0.73/session model. Cost Explorer lags ~24h and shows ~$0; use Billing > Credits for the real balance. All regions checked empty.
 
 ---
@@ -748,7 +749,7 @@ kubectl get secret feature-flag-secrets -n feature-flag-dev \
 - One variable changed: Neon over WAN → RDS in same VPC as pods
 - Same code, same timing instrumentation (`time.perf_counter()` in `app/evaluation.py`)
 - Same test: burst of /evaluate requests, check p95 from Prometheus histogram
-- Keep Neon alive until this test is done
+- Keep Neon alive until this test is done (done 2026-09-26; Neon retired 2026-09-27)
 
 ### Possible Outcomes
 | Result | Conclusion |

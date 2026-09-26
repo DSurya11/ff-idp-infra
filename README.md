@@ -1,17 +1,20 @@
 # idp-infra — Internal Developer Platform infrastructure
 
 All AWS infrastructure for the IDP (EKS, data, networking, Argo CD bootstrap), managed with Terraform.
+Everything that runs on the cluster is deployed by Argo CD from [idp-gitops](https://github.com/DSurya11/idp-gitops).
 
 ## Layer Architecture
 
-| Layer | Directory | State | Destroy between sessions? |
+| Layer | Directory | State | Lifecycle |
 |---|---|---|---|
-| Bootstrap | `00-bootstrap/` | **LOCAL** | NEVER |
-| Network | `10-network/` | S3 | No (\$0 cost) |
-| Data | `20-data/` | S3 | No (stop instances, keep storage) |
-| Cluster | `30-cluster/` | S3 | **YES** (EKS = \$0.10/hr) |
-| Platform | `40-platform/` | S3 | **YES** (goes with cluster) |
-| Legacy Neon | `90-legacy-neon/` | S3 | NEVER (needed for A/B test) |
+| Bootstrap | `00-bootstrap/` | **LOCAL** | Permanent: state bucket, GitHub OIDC, CI roles |
+| Network | `10-network/` | S3 | Permanent (\$0): VPC, subnets, security groups |
+| Registry | `15-registry/` | S3 | Permanent: ECR repositories |
+| Data | `20-data/` | S3 | Created by `make up`, destroyed by `make down`: RDS, Secrets Manager |
+| Cluster | `30-cluster/` | S3 | Created/destroyed each session: EKS, NAT, Valkey, IRSA |
+| Platform | `40-platform/` | S3 | Created/destroyed each session: ALB controller, ESO, Argo CD |
+
+All S3 backends use state locking (`use_lockfile = true`).
 
 ## Prerequisites
 
@@ -30,15 +33,14 @@ aws sts get-caller-identity --profile idp
 ## Session Lifecycle
 
 ```bash
-make up    # Start data instances + apply cluster + platform layers
-make down  # Destroy cluster + platform, stop (not destroy) data instances
-make verify-empty  # Confirm no billable resources running
+make up            # ~21-27 min: 20-data -> 30-cluster -> 40-platform; Argo CD deploys the rest
+make down          # ~16 min: removes the ALB, destroys 40 -> 30 -> 20, then verifies; must exit 0
+make verify-empty  # confirm nothing billable is running
 ```
 
 ## Cost Model
 
-- **Between sessions:** ~\$3.62/month (RDS + ElastiCache storage only)
-- **Per 3-hr session:** ~\$0.69 (EKS + SPOT nodes + NAT + ALB)
-- **Monthly (12 sessions):** ~\$15
+- **Between sessions:** \$0.00 (everything billable is destroyed; ECR storage ~\$0.10/GB-month)
+- **While up:** ~\$0.26/hr, ~\$0.80 per 3-hour session (EKS, 2x t4g.small, NAT, ALB, RDS, Valkey)
 
-See handover document for full price breakdown verified via AWS Pricing API.
+See HANDOVER_DOC.md for the full price breakdown (verified via the AWS Pricing API).

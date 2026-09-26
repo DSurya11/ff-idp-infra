@@ -2,7 +2,7 @@ PROFILE  := idp
 ACCOUNT  := 693906847772
 REGION   := ap-south-1
 
-.PHONY: up down verify-empty neon-plan
+.PHONY: up down verify-empty
 
 # =============================================================================
 # LIFECYCLE STRATEGY — Option B (destroy-every-session)
@@ -14,7 +14,6 @@ REGION   := ap-south-1
 #   - VPC, subnets, SGs, IGW, route tables   (free, not worth destroying)
 #   - S3 state bucket + DynamoDB lock table  (free, bootstrap layer — never destroy)
 #   - IAM role, OIDC provider                (free)
-#   - Neon project (90-legacy-neon)          (never destroy — needed for A/B test)
 #
 # WHAT IS DESTROYED every make down:
 #   - RDS PostgreSQL (all data gone — no final snapshot, no storage cost)
@@ -89,8 +88,3 @@ down:
 # The check filters to only BILLABLE resource types.
 verify-empty:
 	@python3 scripts/verify-empty.py
-
-# ─── Neon — never destroyed (needed for A/B latency test in Step 21) ─────────
-neon-plan:
-	@echo "==> Checking Neon project state (never destroy this)..."
-	terraform -chdir=90-legacy-neon plan
