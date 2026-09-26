@@ -689,6 +689,9 @@ resource "aws_db_instance" "postgres" {
 **Finding 36: Tag API ghosts purged NAT gateways.** ~1h after deletion AWS purges a NAT gateway, but `resourcegroupstaggingapi` still lists its ARN and `describe-nat-gateways --nat-gateway-ids` fails with `NatGatewayNotFound`. `verify-empty.py` treated that as billable (false alarm, make down exited non-zero). Fixed: NotFound = free. The direct service checks were empty the whole time.
 **Finding 37: An interrupted `make down` leaves billable resources.** A teardown that was cut off (session/process ended) left the NAT gateway, its EIP and RDS running (~$0.09/hr) while EKS and Valkey were already gone. `make down` is idempotent: just re-run it. After ANY interruption, run `make verify-empty` (or query EKS/NAT/RDS directly) before closing the laptop. Do not start `make down` and walk away from the session.
 **Finding 35: Argo root app YAML bug.** `syncOptions` must be under `spec.syncPolicy`, not `spec`. Root app is manual-sync and scoped by `directory.include` to the EKS manifests until Step 27.
+**Finding 38: Argo CD v2.13 vs Kubernetes 1.35 schema skew.** With `ServerSideApply=true`, Argo's structured-merge diff fails on the live Deployment: `.status.terminatingReplicas: field not declared in schema` (field added in k8s 1.33). Sync status goes `Unknown` and auto-sync silently stops; the FIRST sync works (nothing live to diff), so it only shows on the second deploy. Workaround: no ServerSideApply on `feature-flag-dev`. Real fix (TODO): upgrade the Argo CD chart (7.7.3 = v2.13, tested only to k8s ~1.31) to a release that supports 1.35.
+**Finding 39: selfHeal vs teardown.** With automated sync + selfHeal, deleting the Ingress in `make down` would just be recreated. `down.sh` now deletes the `root` Application first; finalizers cascade root -> children -> resources, so the Ingress (and the ALB, via the still-running controller) is gone before Terraform runs. Verified: ALB list empty before 40-platform destroy.
+**Finding 40: App-of-apps needs an Application health check.** Argo CD 1.8+ reports no health for Application resources, so child sync waves are not waited on. 40-platform adds the upstream `resource.customizations.health.argoproj.io_Application` Lua. Verified: platform-cluster (wave 0) synced 14:45:57, feature-flag-dev (wave 1) created 14:45:59.
 **Finding 27: Spend audit.** As of 2026-09-26, ~$1 of credits used over 3 sessions, consistent with the ~$0.73/session model. Cost Explorer lags ~24h and shows ~$0; use Billing > Credits for the real balance. All regions checked empty.
 
 ---
@@ -826,14 +829,13 @@ Build+teardown overhead is ~43 min of billing (~$0.20) even for a 5-minute test.
 
 ---
 
-## 16b. Next Session Checklist (Session 6)
-Steps 23, 24, 25 are VERIFIED (2026-09-26): 2 nodes/110 pods, ESO recreates a deleted secret in ~5s with the same hash, ALB `/health` = 200 with exactly one ALB.
-1. `aws sts get-caller-identity --profile ff-idp`, then `make up` (15-registry is permanent and already applied; images persist).
-2. Sync the app: `kubectl patch application root -n argocd --type merge -p '{"operation":{"sync":{"syncOptions":["CreateNamespace=true","ServerSideApply=true"]}}}'`
-3. Set `ff-idp/jwt-secret` (JSON key `JWT_SECRET_KEY`, NOT `secret`) BEFORE syncing - generate randomly, never echo. Migrations run automatically and are verified (Finding 34). Sync command is in step 2.
-4. CI bot is fixed (Finding 33): pushing to Feature-Flag-Service main updates env-config automatically.
-5. Next steps: Step 26/27 (app-of-apps + env-config restructure; re-enable automated sync), Step 28 (HPA/PDB/rolling update).
-6. `make down` must exit 0 (it runs verify-empty). Check Billing > Credits.
+## 16b. Next Session Checklist
+Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itself -> work -> `make down`.
+1. `aws sts get-caller-identity --profile ff-idp`, check `curl -s https://checkip.amazonaws.com` matches `allowed_cidr` in 30-cluster/variables.tf, then `make up` (~21-27 min). It waits for the root app to be Healthy.
+2. Check: `kubectl get applications -n argocd` all Synced/Healthy; ALB: `kubectl get ingress -n feature-flag-dev`.
+3. No manual secret or migration steps any more (JWT generated, alembic Job automatic).
+4. NEXT WORK: upgrade Argo CD chart for k8s 1.35 (Finding 38), then Step 28 (HPA + PDB + rolling-update proof under k6 load).
+5. `make down` must exit 0 and you must SEE it finish (Finding 37). Re-run it if interrupted.
 
 ---
 
@@ -1014,7 +1016,14 @@ aws elbv2 describe-load-balancers --profile ff-idp \
 
 ### PHASE C — GitOps Properly
 
-#### Step 26 — Argo CD via Terraform + App-of-Apps
+#### Steps 26 + 27 - DONE and VERIFIED 2026-09-26
+- Root Application (40-platform, automated) -> `platform/argocd-apps/` -> `platform-cluster` (wave 0, ClusterSecretStore) + `feature-flag-dev` (wave 1, `apps/feature-flag-service/overlays/dev`, automated prune+selfHeal).
+- env-config is Kustomize: `apps/feature-flag-service/base` + `overlays/{dev,staging,prod}`. staging/prod are defined but NOT deployed (need own DB, distinct ingress rule, more nodes - see their kustomization.yaml). Kind-era manifests deleted (in git history). Kyverno policy parked in `platform/kyverno/` (not synced until Kyverno is installed).
+- JWT key is generated by 20-data each session (no manual step).
+- Verified: `make up` alone -> app live, migration ran, ALB 200, zero manual syncs. Full GitOps chain: empty commit -> CI green -> bot bumps `overlays/dev` newTag -> Argo auto-rolls out the new SHA (~9 min push-to-running incl. CI; Argo polls every 3 min).
+- Deviations from the original plan: Argo CD installs ESO and the ALB controller via Terraform, not Argo (bootstrap order; revisit later). No ApplicationSet yet (one env live - an ApplicationSet is worth it when staging goes live).
+
+#### Step 26 — Argo CD via Terraform + App-of-Apps (original plan)
 Terraform installs Argo CD ONLY. Argo CD installs everything else.
 Sync wave order: 0=ESO, 1=ALB Controller, 2=Kyverno, 3=Prometheus+metrics-server, 4=Apps.
 
