@@ -361,7 +361,7 @@ resource "null_resource" "argocd_root_app" {
             recurse: false
             # Flat repo until Step 27: only the EKS/dev manifests. The rest (kind manifests,
             # Kyverno, ServiceMonitor) need CRDs or a different cluster.
-            include: "{namespace-dev,cluster-secret-store,externalsecret-feature-flag-dev,eks-api-deployment,eks-api-service,eks-api-ingress}.yaml"
+            include: "{namespace-dev,cluster-secret-store,externalsecret-feature-flag-dev,eks-api-deployment,eks-db-migrate-job,eks-api-service,eks-api-ingress}.yaml"
         destination:
           server: https://kubernetes.default.svc
           namespace: argocd
@@ -396,7 +396,7 @@ resource "null_resource" "argocd_root_app" {
             recurse: false
             # Flat repo until Step 27: only the EKS/dev manifests. The rest (kind manifests,
             # Kyverno, ServiceMonitor) need CRDs or a different cluster.
-            include: "{namespace-dev,cluster-secret-store,externalsecret-feature-flag-dev,eks-api-deployment,eks-api-service,eks-api-ingress}.yaml"
+            include: "{namespace-dev,cluster-secret-store,externalsecret-feature-flag-dev,eks-api-deployment,eks-db-migrate-job,eks-api-service,eks-api-ingress}.yaml"
         destination:
           server: https://kubernetes.default.svc
           namespace: argocd
