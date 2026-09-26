@@ -268,6 +268,20 @@ module "eks" {
   # The module uses API_AND_CONFIG_MAP auth mode; this adds an access entry automatically.
   enable_cluster_creator_admin_permissions = true
 
+  # The module opens cluster -> node only on 443/4443/6443/8443/9443/10250. The EKS
+  # metrics-server add-on serves on 10251, so without this the aggregated Metrics API
+  # times out ("failing or missing response ... :10251") and HPAs show <unknown>.
+  node_security_group_additional_rules = {
+    ingress_cluster_metrics_server = {
+      description                   = "Cluster API to metrics-server"
+      protocol                      = "tcp"
+      from_port                     = 10251
+      to_port                       = 10251
+      type                          = "ingress"
+      source_cluster_security_group = true
+    }
+  }
+
   cluster_addons = {
     vpc-cni = {
       most_recent    = true
