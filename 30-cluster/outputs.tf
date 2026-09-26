@@ -45,11 +45,6 @@ output "alb_controller_irsa_role_arn" {
   value       = aws_iam_role.alb_controller.arn
 }
 
-output "ebs_csi_irsa_role_arn" {
-  description = "IAM role ARN for EBS CSI driver — passed in cluster_addons config"
-  value       = aws_iam_role.ebs_csi.arn
-}
-
 # ─── ElastiCache Valkey ───────────────────────────────────────────────────────
 
 output "valkey_primary_endpoint" {

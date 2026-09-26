@@ -301,10 +301,6 @@ module "eks" {
     kube-proxy = {
       most_recent = true
     }
-    aws-ebs-csi-driver = {
-      most_recent              = true
-      service_account_role_arn = aws_iam_role.ebs_csi.arn
-    }
     eks-pod-identity-agent = {
       most_recent = true
     }
@@ -479,45 +475,10 @@ resource "aws_iam_role_policy" "alb_controller" {
 }
 
 # =============================================================================
-# IRSA — EBS CSI Driver
+# EBS CSI driver - REMOVED (Step 29)
 # =============================================================================
-# aws-ebs-csi-driver needs to create/attach/delete EBS volumes for PVCs.
-# AmazonEBSCSIDriverPolicy is an AWS-managed policy — no inline JSON needed.
-# Referenced in cluster_addons.aws-ebs-csi-driver.service_account_role_arn above.
+# Nothing in the cluster uses EBS volumes, and its controller (2 replicas x 6
+# containers, system-cluster-critical) was the pod that preempted the API in the
+# Step 28 drain test. Removed to free memory on 2x t4g.small for Backstage.
+# Re-add the add-on + an IRSA role with AmazonEBSCSIDriverPolicy if a PVC is needed.
 
-data "aws_iam_policy_document" "ebs_csi_assume_role" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-
-    principals {
-      type        = "Federated"
-      identifiers = [module.eks.oidc_provider_arn]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub"
-      values   = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "ebs_csi" {
-  name               = "ff-idp-ebs-csi-driver"
-  assume_role_policy = data.aws_iam_policy_document.ebs_csi_assume_role.json
-
-  tags = {
-    Name = "ff-idp-ebs-csi-driver"
-  }
-}
-
-resource "aws_iam_role_policy_attachment" "ebs_csi" {
-  role       = aws_iam_role.ebs_csi.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-}

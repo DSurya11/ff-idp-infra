@@ -176,7 +176,11 @@ data "aws_iam_policy_document" "github_ci_trust" {
       # (repo:OWNER@OWNER_ID/REPO@REPO_ID:...). The old "repo:OWNER/REPO:..." form no longer
       # matches, which shows up as "Not authorized to perform sts:AssumeRoleWithWebIdentity".
       # IDs: DSurya11 = 162597218, Feature-Flag-Service = 1368152185.
-      values = ["repo:DSurya11@162597218/Feature-Flag-Service@1368152185:ref:refs/heads/main"]
+      # idp-portal = 1389614591 (Backstage, Step 29). Each entry is one exact repo + branch.
+      values = [
+        "repo:DSurya11@162597218/Feature-Flag-Service@1368152185:ref:refs/heads/main",
+        "repo:DSurya11@162597218/idp-portal@1389614591:ref:refs/heads/main",
+      ]
     }
   }
 }
@@ -184,7 +188,7 @@ data "aws_iam_policy_document" "github_ci_trust" {
 resource "aws_iam_role" "github_ci" {
   name               = "ff-idp-github-ci"
   assume_role_policy = data.aws_iam_policy_document.github_ci_trust.json
-  description        = "Assumed by GitHub Actions CI for Feature-Flag-Service (main branch only)"
+  description        = "Assumed by GitHub Actions CI for Feature-Flag-Service and idp-portal (main branch only)"
 }
 
 # ECR permissions — scoped to the specific repository.
@@ -215,6 +219,7 @@ data "aws_iam_policy_document" "github_ci_ecr" {
     ]
     resources = [
       "arn:aws:ecr:ap-south-1:${data.aws_caller_identity.current.account_id}:repository/feature-flag-service",
+      "arn:aws:ecr:ap-south-1:${data.aws_caller_identity.current.account_id}:repository/idp-portal",
     ]
   }
 }

@@ -81,7 +81,49 @@ resource "aws_ecr_lifecycle_policy" "feature_flag_service" {
   })
 }
 
+# Backstage (idp-portal). Same policy as the service repo: immutable SHA tags,
+# scan on push, keep the last 20. Images are ~1.2 GB each (node_modules), so 20 = ~24 GB
+# so keep only 5 (~6 GB worst case = ~$0.60/month).
+resource "aws_ecr_repository" "idp_portal" {
+  name                 = "idp-portal"
+  image_tag_mutability = "IMMUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name = "idp-portal"
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "idp_portal" {
+  repository = aws_ecr_repository.idp_portal.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 5 images - Backstage images are ~1.2 GB"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 5
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
 output "ecr_repository_url" {
   description = "Full ECR URL for the feature-flag-service image (without tag)"
   value       = aws_ecr_repository.feature_flag_service.repository_url
+}
+
+output "idp_portal_repository_url" {
+  description = "Full ECR URL for the idp-portal (Backstage) image (without tag)"
+  value       = aws_ecr_repository.idp_portal.repository_url
 }
