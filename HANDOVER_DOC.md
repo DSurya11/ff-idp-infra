@@ -695,6 +695,8 @@ resource "aws_db_instance" "postgres" {
 **Finding 41: HPA in an early sync wave deadlocks Argo CD v3.** Argo CD v3 health-checks HPAs; one whose target Deployment does not exist yet is Degraded. In wave 0 (default) it blocked the wave-2 Deployment forever ("unable to get the target's current scale ... not found", sync retrying). Fix: HPA and PDB on wave 3, after the Deployment.
 **Finding 42: EKS metrics-server add-on needs port 10251 open.** The terraform-aws-modules/eks node SG allows cluster->node only on 443/4443/6443/8443/9443/10250; the add-on serves on 10251. Symptom: pods Running but `kubectl top` says "Metrics API not available", APIService "failing or missing response ... :10251 context deadline exceeded", HPA shows `<unknown>`. Fix: `node_security_group_additional_rules` for 10251 from the cluster SG.
 **Finding 43: Argo CD upgraded 7.7.3 (v2.13) -> chart 10.9.2 (v3.5.3).** Fresh install each session, so no in-place migration. Dropped `application.namespaces` from argocd-cm (it belongs in cmd-params, and was unused). ServerSideApply stays off on feature-flag-dev (not needed; SSA was not re-tested on v3).
+**Finding 44: Preemption ignores PodDisruptionBudgets (Step 28).** First drain test under load: 105/14258 requests failed (502/503/504 in a ~10s window). Isolated by re-running each event alone with per-failure logging: rolling restart alone = 0 failures; steady state = 0; drain with no API pod on the node = 0; drain of the node holding an API pod = 82 failures. Events showed `Preempted by pod ...` on BOTH API replicas: after the drain, everything had to fit on one t4g.small (memory requests 82%), a system-cluster-critical pod (ebs-csi-controller) could not schedule, and the scheduler preempted the lowest-priority pods - the API, at priority 0. PDBs only govern evictions, not preemption. Fixes: (1) `business-critical` PriorityClass (1e6) for the API, (2) zone topology spread, (3) realistic node replacement = surge a node first (what EKS managed node group updates do), not drain with zero headroom. Root cause is capacity: 2x 2GiB nodes cannot absorb a whole node. Also: ebs-csi-controller runs 2 replicas x 6 containers and nothing uses EBS yet - a candidate to remove to free memory.
+**Finding 45: Step 28 proof (final run).** Under 20 rps constant k6 load through the ALB: GitOps rollout (push -> Argo) + node group surge 2->3 + drain of a node holding an API pod: **28,800 requests, 0 failed, p95 43.8 ms**. The drain logged "Cannot evict pod as it would violate the pod's disruption budget" x5 - the PDB held the second replica until its replacement was Ready. HPA burst (150 iterations/s = 300 req/s): CPU 26% -> 329% of request, scaled 3 -> 4 (max) in ~30 s, **53,602 requests, 0 failed, p95 73 ms**. Mechanisms: maxUnavailable 0 / maxSurge 1, ALB pod readiness gate (namespace label), preStop sleep 20s > ALB deregistration delay 10s, PDB minAvailable 1, HPA owns replicas (none in Git). Reproduce: `tests/rollout-load.js` (logs every failure with timestamp + status).
 **Finding 27: Spend audit.** As of 2026-09-26, ~$1 of credits used over 3 sessions, consistent with the ~$0.73/session model. Cost Explorer lags ~24h and shows ~$0; use Billing > Credits for the real balance. All regions checked empty.
 
 ---
@@ -837,7 +839,7 @@ Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itse
 1. `aws sts get-caller-identity --profile ff-idp`, check `curl -s https://checkip.amazonaws.com` matches `allowed_cidr` in 30-cluster/variables.tf, then `make up` (~21-27 min). It waits for the root app to be Healthy.
 2. Check: `kubectl get applications -n argocd` all Synced/Healthy; ALB: `kubectl get ingress -n feature-flag-dev`.
 3. No manual secret or migration steps any more (JWT generated, alembic Job automatic).
-4. NEXT WORK: upgrade Argo CD chart for k8s 1.35 (Finding 38), then Step 28 (HPA + PDB + rolling-update proof under k6 load).
+4. NEXT WORK: Phase D - Step 29 (Backstage in cluster). Watch memory: 2x t4g.small is already at ~60-85% of requests; Backstage needs ~512Mi+. Options: drop the unused EBS CSI add-on, or 3 nodes (~+$0.017/hr).
 5. `make down` must exit 0 and you must SEE it finish (Finding 37). Re-run it if interrupted.
 
 ---
@@ -1034,7 +1036,10 @@ Sync wave order: 0=ESO, 1=ALB Controller, 2=Kyverno, 3=Prometheus+metrics-server
 See Section 14 for target structure. Pause Argo CD auto-sync during restructure.
 Promotion: dev auto-deploys → staging PR → prod manual sync.
 
-#### Step 28 — HPA + PDB + Rolling Update Proof
+#### Step 28 - DONE and VERIFIED 2026-09-26 (see Findings 41, 42, 44, 45)
+Zero failed requests across GitOps rollout + node surge + drain; HPA scale-out verified.
+
+#### Step 28 — HPA + PDB + Rolling Update Proof (original plan)
 k6 load during rolling update. Zero failed requests required.
 
 ---
