@@ -1,0 +1,11 @@
+# Weekly PRs for provider/module versions and CI actions. Provider majors (AWS 6, EKS module 21)
+# are planned upgrades (PLATFORM_REVIEW F10): review the plan diff before merging.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly}
+    groups: {actions: {patterns: ["*"]}}
+  - package-ecosystem: terraform
+    directories: ["/00-bootstrap", "/10-network", "/15-registry", "/20-data", "/30-cluster", "/40-platform", "/modules/vpc"]
+    schedule: {interval: weekly}

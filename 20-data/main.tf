@@ -98,6 +98,7 @@ resource "aws_db_instance" "postgres" {
   instance_class    = "db.t3.micro" # t4g.micro has no capacity in ap-south-1a/1b; t3.micro does
   allocated_storage = 20
   storage_type      = "gp2"
+  storage_encrypted = true # AWS-managed KMS key: free; RDS is recreated every session, nothing to migrate
 
   db_name  = "feature_flags"
   username = "ff_admin"

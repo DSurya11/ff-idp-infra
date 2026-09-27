@@ -188,8 +188,9 @@ resource "aws_elasticache_replication_group" "valkey" {
   subnet_group_name  = aws_elasticache_subnet_group.valkey.name
   security_group_ids = [data.terraform_remote_state.network.outputs.sg_elasticache_id]
 
-  # Lab: no encryption needed. Production would enable both.
-  at_rest_encryption_enabled = false
+  # At rest: free, transparent to clients. In transit: needs TLS in every client (rediss://),
+  # tracked as PLATFORM_REVIEW F13; .trivyignore.yaml records the exception until then.
+  at_rest_encryption_enabled = true
   transit_encryption_enabled = false
 
   # lifecycle: ignore auth_token fields — the v6 AWS provider schema wrote

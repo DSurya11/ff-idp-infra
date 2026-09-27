@@ -1,0 +1,57 @@
+# idp-infra CI: static checks on every push and PR (PLATFORM_REVIEW F7).
+#   fmt       terraform fmt -check
+#   validate  every layer, with the committed provider lock files (init -backend=false: no AWS access)
+#   tflint    recommended preset; fails on errors, reports warnings
+#   trivy     IaC misconfigurations HIGH/CRITICAL; accepted exceptions live in .trivyignore.yaml
+# Next step (needs a read-only OIDC role in 00-bootstrap): `terraform plan` per layer on PRs.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.16.3
+      - name: fmt
+        run: terraform fmt -check -recursive -diff
+      - name: validate
+        run: |
+          for layer in 00-bootstrap 10-network 15-registry 20-data 30-cluster 40-platform; do
+            echo "::group::$layer"
+            terraform -chdir=$layer init -backend=false -input=false -lockfile=readonly >/dev/null
+            terraform -chdir=$layer validate -no-color
+            echo "::endgroup::"
+          done
+      - uses: terraform-linters/setup-tflint@90f302c255ef959cbfb4bd10581afecdb7ece3e6 # v4.1.1
+      - name: tflint
+        run: |
+          tflint --init
+          tflint --recursive --minimum-failure-severity=error
+
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Trivy IaC scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IGNOREFILE: .trivyignore.yaml   # YAML format (per-path exceptions with reasons)
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'

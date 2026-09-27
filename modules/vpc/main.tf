@@ -46,9 +46,9 @@ resource "aws_subnet" "public" {
   cidr_block        = var.public_subnet_cidrs[count.index]
   availability_zone = var.availability_zones[count.index]
 
-  # Public subnets auto-assign public IPs to instances launched in them.
-  # Needed for NAT Gateway EIP association.
-  map_public_ip_on_launch = true
+  # No auto-assigned public IPs: nothing we launch here needs one (the NAT gateway gets its
+  # EIP via allocation_id, the ALB manages its own addresses, nodes live in private subnets).
+  map_public_ip_on_launch = false
 
   tags = {
     Name = "${var.name}-public-${var.availability_zones[count.index]}"

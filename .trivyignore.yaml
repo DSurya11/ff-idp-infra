@@ -1,0 +1,16 @@
+# Trivy IaC findings we accept on purpose. Each entry names the reason and the production
+# equivalent (PLATFORM_REVIEW.md section 4). Anything NOT listed here fails CI.
+misconfigurations:
+  - id: AWS-0132
+    paths: ["00-bootstrap/main.tf"]
+    statement: "State bucket uses SSE-S3 (AES256). A customer-managed KMS key costs $1/month for no gain in a single-account lab. Production: SSE-KMS with a CMK."
+  - id: AWS-0104
+    paths: ["modules/vpc/main.tf", "terraform-aws-modules/eks/aws/node_groups.tf"]
+    statement: "Security groups allow egress to 0.0.0.0/0: nodes pull images and reach AWS APIs through the NAT gateway. Production: VPC endpoints + egress restrictions/NetworkPolicy (PLATFORM_REVIEW F13)."
+  - id: AWS-0040
+    statement: "Public EKS endpoint, restricted to the operator's /32 (var.allowed_cidr). No VPN in a solo lab. Production: private endpoint + VPN/bastion."
+  - id: AWS-0041
+    statement: "The only public CIDR allowed on the EKS endpoint is the operator's /32 (var.allowed_cidr)."
+  - id: AWS-0051
+    paths: ["30-cluster/main.tf"]
+    statement: "Valkey in-transit encryption needs TLS (rediss://) in every client; tracked as PLATFORM_REVIEW F13. At-rest encryption is on."

@@ -12,7 +12,7 @@ REGION   := ap-south-1
 #
 # WHAT SURVIVES make down:
 #   - VPC, subnets, SGs, IGW, route tables   (free, not worth destroying)
-#   - S3 state bucket + DynamoDB lock table  (free, bootstrap layer — never destroy)
+#   - S3 state bucket (S3-native locks; the DynamoDB table is unused)  (free, never destroy)
 #   - IAM role, OIDC provider                (free)
 #
 # WHAT IS DESTROYED every make down:
@@ -25,7 +25,7 @@ REGION   := ap-south-1
 #   - Argo CD and all platform components
 #
 # COST AFTER make down: $0.00/month
-# COST DURING SESSION:  ~$0.10/hr (EKS control plane) + spot node cost
+# COST DURING SESSION:  ~$0.26/hr (EKS, 2x t4g.small on-demand, NAT, ALB, RDS, Valkey; HANDOVER section 3)
 #
 # IMPORTANT: verify-empty MUST pass before closing laptop.
 # If it shows any resources, something did not destroy cleanly — investigate.

@@ -1,6 +1,6 @@
 ---
 # Feature Flag IDP — Master Handover Document
-> Last updated: 2026-09-27 (Session 6: Step 30 built, ff-idp -> idp rename, state locking, CI hardening)
+> Last updated: 2026-09-27 (Session 7: Step 30 live demo, GitHub sign-in, template research -> TEMPLATES_RESEARCH.md)
 > Purpose: Self-contained context for any AI/agent to continue this project from any point.
 > Nothing should need to be re-verified or re-asked if this document is read first.
 
@@ -22,7 +22,7 @@ old names.
 | state bucket `ff-idp-tfstate-693906847772`, table `ff-idp-tf-locks` | `idp-tfstate-693906847772`, `idp-tf-locks` |
 | CI roles `ff-idp-github-ci`, `ff-idp-service-ci` | `idp-github-ci`, `idp-service-ci` |
 | AWS profile `ff-idp`, IAM user `ff-idp-admin`, laptop secrets dir `~/.ff-idp` | `idp`, `idp-admin`, `~/.idp` |
-| GitHub Apps `ff-idp-ci-bot`, `ff-idp-backstage` | not renamed (display names only; CI uses the App ID) |
+| GitHub Apps `ff-idp-ci-bot`, `ff-idp-backstage` | renamed 2026-09-27 by the user in the GitHub UI (to `idp-ci-bot` / `idp-backstage` as suggested; confirm). IDs unchanged. Still to do: bot `git config user.name` in both CI workflows (use the token action's `app-slug` output), comments, secrets `FF_IDP_CI_BOT_*` |
 
 The old state bucket and lock table were detached from 00-bootstrap state (not destroyed) as a
 backup. Delete them after the first successful `make up` on the new bucket. `verify-empty`
@@ -43,7 +43,7 @@ scans both `Project=idp` and `Project=ff-idp` tags.
 | 26 Argo CD app-of-apps via Terraform, 27 Kustomize overlays | Done and verified 2026-09-26 |
 | 28 HPA + PDB + zero-downtime rollouts (0 failed requests under load) | Done and verified 2026-09-26 |
 | 29 Backstage in the cluster (image via CI, RDS, GitHub App) | Done and verified 2026-09-27 |
-| 30 Software template `python-service` | Built; live demo is the next session |
+| 30 Software template `python-service` | Live demo done 2026-09-27: form -> running in 5m31s (~2 min machine time) |
 | 31 plugins, 33 Kyverno suite, 34 observability, 35 DR drill, 36 e2e rewrite | Not started |
 
 **How a session works:** `make up` (~21-27 min, creates 20-data -> 30-cluster -> 40-platform;
@@ -60,8 +60,31 @@ ff-idp -> idp (section 0, Finding 50); Terraform state locking turned on (Findin
 CI hardened (Finding 48 fixed); stale `argocd/application.yaml` and old catalog data removed
 from feature-flag-service.
 
-**Next session (planned 2026-09-28):** Step 30 live demo, then new templates (flag helper in
-the skeleton, Template 2 `add-feature-flag`). Checklist in section 16b.
+**Read `PLATFORM_REVIEW.md` (this repo) before new work.** It maps every part of the platform
+against industry practice (sourced) and ranks 16 flaws. The top ones: a long-lived admin access key on
+the laptop (F1), idp-gitops main unprotected (F2), apps using the RDS master user (F3), everything in
+the `default` Argo AppProject and no Pod Security Admission/Kyverno (F4, F5), no observability
+(F14). Its section 5 is the merged work order. The user's rule: where we differ from industry
+without a real reason, follow industry. Open decisions: GitHub org (F16), Identity Center (F1),
+the template decisions.
+
+**Templates: read `TEMPLATES_RESEARCH.md` (this repo) before any template work.** The first live
+run (2026-09-27) proved the chain but also showed `python-service` v1 is a starter, not a golden
+path: dev needs a human merge (G1), **later pushes to a generated service never deploy (G2,
+Finding 55)**, and there are no tests, lint, docs, observability or supply-chain controls. That
+file has the industry research, the gap matrix, the zero-touch design (ApplicationSet + Argo CD
+Image Updater + an await-and-merge scaffolder action) and the phased plan. The user's direction
+(2026-09-27): dev must be 100% automated; templates must be industry-grade, not toys.
+
+**Next session:** PLATFORM_REVIEW.md section 5 order (decide F16 first; offline fixes before
+cluster time), which includes TEMPLATES_RESEARCH.md phases 1-4. Build and render-test offline; `make up` only to verify. Checklist
+in section 16b. The earlier plan (flag helper in the skeleton, Template 2 `add-feature-flag`) is
+now phases 3 and 6 of that plan. The one-Location fix (`templates/all-templates.yaml`) is done
+(Finding 53): a new template is a git push, no image rebuild.
+
+Small pending items: GitHub Apps were renamed in the UI (section 0); code refs + `IDP_CI_BOT_*`
+secrets still to do (needs a new CI bot key). Delete the unused `ENV_CONFIG_REPO_PAT` secret in
+feature-flag-service (Step 12 leftover, long-lived PAT; PLATFORM_REVIEW F8).
 
 ---
 
@@ -193,9 +216,10 @@ orphaned snapshots. Must be true. Set and verified in 20-data/main.tf.
 
 | Repo | Local path | What it holds |
 |---|---|---|
-| [idp-infra](https://github.com/DSurya11/idp-infra) | `~/projects/idp-infra` | Terraform layers, Makefile, `scripts/` (down.sh, verify-empty.py, load-local-secrets.sh), `tests/rollout-load.js`, this doc |
+| [idp-infra](https://github.com/DSurya11/idp-infra) | `~/projects/idp-infra` | Terraform layers, Makefile, `scripts/` (down.sh, verify-empty.py, load-local-secrets.sh), `tests/rollout-load.js`, this doc, `PLATFORM_REVIEW.md`, `TEMPLATES_RESEARCH.md` |
 | [idp-gitops](https://github.com/DSurya11/idp-gitops) | `~/projects/idp-gitops` | Everything Argo CD deploys (layout below). Nothing is applied by hand |
-| [idp-portal](https://github.com/DSurya11/idp-portal) (public) | `~/projects/idp-portal` | Backstage 1.54 app, its CI, and `templates/python-service/` |
+| [idp-portal](https://github.com/DSurya11/idp-portal) (public) | `~/projects/idp-portal` | Backstage 1.54 app, its CI, `templates/all-templates.yaml` + `templates/python-service/` |
+| [hello-svc](https://github.com/DSurya11/hello-svc) (public) | - | first service generated by the template (2026-09-27) |
 | [feature-flag-service](https://github.com/DSurya11/feature-flag-service) | `~/projects/feature-flag-service` | The flag API (FastAPI, Alembic), its CI, `catalog-info.yaml` |
 
 Cleaned 2026-09-27: one-off helper scripts, old transcripts, duplicate kubectl/terraform
@@ -783,8 +807,8 @@ Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itse
 2. Check: `kubectl get applications -n argocd` all Synced/Healthy; ALB: `kubectl get ingress -n feature-flag-dev`.
 3. No manual secret or migration steps any more (JWT generated, alembic Job automatic).
 4. Open Backstage: `kubectl port-forward svc/idp-portal -n backstage 7007:7007` -> http://localhost:7007 (guest sign-in).
-5. NEXT WORK (planned for 2026-09-28): Step 30 live demo - `~/.idp` now has all three GitHub App files, so `make up` loads idp/backstage-github-app automatically. Run the python-service template for `hello-svc` -> CI green -> merge the idp-gitops PR -> `http://<ALB>/hello-svc/` -> record the form-to-running time. Then new templates (feature-flag helper in the skeleton, Template 2 `add-feature-flag`).
-6. After the first successful `make up` on the new bucket: delete the old backups `ff-idp-tfstate-693906847772` (versioned: delete all versions) and `ff-idp-tf-locks`.
+5. NEXT WORK: TEMPLATES_RESEARCH.md phase 1 (zero-touch dev delivery), then phases 2-4. Step 30 demo is done (section 17). Backstage: sign in with GitHub (not guest) to run templates; `hello-svc` is in idp-gitops, so `make up` redeploys it (image stays in ECR).
+6. The first `make up` on the new bucket succeeded (2026-09-27): the old backups `ff-idp-tfstate-693906847772` (versioned: delete all versions) and `ff-idp-tf-locks` can be deleted.
 7. `make down` must exit 0 and you must SEE it finish (Finding 37). Re-run it if interrupted.
 
 ---
@@ -1004,7 +1028,28 @@ Verified live: `make up` alone deployed it (Argo `idp-portal` Synced/Healthy); R
 - Second DATABASE on same RDS instance (`CREATE DATABASE backstage_db`)
 - Replace GitHub PAT with GitHub App, store in idp/backstage-github-app secret
 
-#### Step 30 - Software Templates: BUILT (2026-09-27), live demo pending
+#### Step 30 - Software Templates: LIVE DEMO DONE (2026-09-27, `hello-svc`)
+Form submit -> `http://<ALB>/hello-svc/` 200 in **5m31s** (06:40:47Z -> 06:46:18Z), of which ~3.5 min
+was a human waiting to merge. Machine time ~2 min: scaffolder 17 s (repo, idp-gitops PR, catalog),
+new repo CI green 1m12s (image in ECR `svc/hello-svc`), merge -> first 200 in 36 s (Argo refresh
+forced; otherwise up to +3 min poll). Verified: 2 pods uid 10001, PriorityClass business-critical,
+HPA 2-3, PDB minAvailable 1, Argo `hello-svc` Synced/Healthy, catalog component `hello-svc`.
+- Finding 52: publish:github with the App's installation token fails "Resource not accessible by
+  integration": POST /user/repos accepts only user tokens (App user token or PAT), never an
+  installation token. Fixed (idp-portal cb1f197): GitHub sign-in via the App's OAuth client
+  (redirect URI http://localhost:7007/api/auth/github/handler/frame, resolver
+  usernameMatchingUserEntityName, User DSurya11 in examples/org.yaml), RepoUrlPicker
+  requestUserCredentials -> publish:github `token: secrets.USER_OAUTH_TOKEN`. The idp-gitops PR
+  still goes through the App. Task runs as user:default/dsurya11.
+- Finding 53: templates now load from ONE Location `idp-portal/templates/all-templates.yaml`
+  (new template = add a target + git push, no image rebuild). Nested Location targets do not
+  inherit per-location `rules`, so `Template` is in the global `catalog.rules`.
+- Finding 54: the first pod of a brand-new service has no ALB readiness gate: the webhook injects
+  it only when the TargetGroupBinding already exists at pod creation. Pods from later rollouts get it.
+- Finding 55: the generated CI builds and pushes on every main push but nothing updates
+  idp-gitops afterwards, so a generated service stays on its first commit forever. The merge is
+  also manual, which contradicts section 14 (dev auto-deploys). Target design and plan:
+  TEMPLATES_RESEARCH.md sections 4 and 8.
 - GitHub App `ff-idp-backstage` (App ID 5088974, installed on ALL repos of DSurya11; administration/contents/workflows/pull_requests write). Actions:read not granted yet (needed for Step 31).
 - Credentials live on the laptop in `~/.idp/` (700/600): `backstage-app.env` (APP_ID, CLIENT_ID), `backstage-app.pem`, `backstage-client-secret`. `make up` runs `scripts/load-local-secrets.sh` -> idp/backstage-github-app (stdin only; keeps $0 idle vs $0.40/mo permanent secret) -> ESO -> Backstage env.
 - Template `idp-portal/templates/python-service` (loaded from GitHub URL): fetch skeleton -> publish:github (public repo) -> render env-config slice pinned to `steps.publish.output.commitHash` -> publish:github:pull-request -> catalog:register.
