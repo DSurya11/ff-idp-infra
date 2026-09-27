@@ -181,6 +181,10 @@ data "aws_iam_policy_document" "github_ci_trust" {
       values = [
         "repo:DSurya11@162597218/feature-flag-service@1368152185:ref:refs/heads/main",
         "repo:DSurya11@162597218/idp-portal@1389614591:ref:refs/heads/main",
+        # GitHub org migration (PLATFORM_REVIEW F16): same repo IDs under org surya-idp (334455734).
+        # The DSurya11 subjects are removed once all repos are transferred and CI is green.
+        "repo:surya-idp@334455734/feature-flag-service@1368152185:ref:refs/heads/main",
+        "repo:surya-idp@334455734/idp-portal@1389614591:ref:refs/heads/main",
       ]
     }
   }
@@ -261,7 +265,10 @@ data "aws_iam_policy_document" "service_ci_trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:DSurya11@162597218/*:ref:refs/heads/main"]
+      values = [
+        "repo:DSurya11@162597218/*:ref:refs/heads/main",
+        "repo:surya-idp@334455734/*:ref:refs/heads/main", # org migration (F16)
+      ]
     }
   }
 }
@@ -338,6 +345,8 @@ data "aws_iam_policy_document" "infra_plan_trust" {
       values = [
         "repo:DSurya11@162597218/idp-infra@1381729533:ref:refs/heads/main",
         "repo:DSurya11@162597218/idp-infra@1381729533:pull_request",
+        "repo:surya-idp@334455734/idp-infra@1381729533:ref:refs/heads/main", # org migration (F16)
+        "repo:surya-idp@334455734/idp-infra@1381729533:pull_request",
       ]
     }
   }
