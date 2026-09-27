@@ -281,7 +281,17 @@ well, removing the CI bot private key from those repos.
 
 ---
 
-## 9. Open decisions (for the user)
+## 9. Decisions (made by the user 2026-09-27)
+
+1. Zero-touch mechanism: **the industry standard** -> Argo CD Image Updater now (Argo's own
+   registry-to-Git tool, one in-cluster credential); Kargo when staging/prod exist.
+2. Onboarding merge: **PR + automatic merge** after the service CI and idp-gitops `validate` pass.
+3. Central CI repo: **`idp-platform`** (in the new GitHub org `surya-idp`).
+4. `hello-svc`: **deleted** (repo, ECR `svc/hello-svc`, idp-gitops manifests via PR #6); a new demo
+   service is created from template v2.
+5. GitHub organization: **yes**, `surya-idp` (id 334455734, Free) - PLATFORM_REVIEW F16.
+
+### Original options (kept for context)
 
 1. Zero-touch mechanism: Image Updater now, Kargo later (recommended) vs Kargo now.
 2. Onboarding merge: PR + automatic merge after checks (recommended, keeps an audit record) vs a

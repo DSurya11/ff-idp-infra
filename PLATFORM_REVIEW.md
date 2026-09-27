@@ -243,7 +243,7 @@ Each item ends with command output as evidence, per the HANDOVER convention.
 | F13 | RDS `storage_encrypted`, Valkey at-rest encryption (apply at next `make up`); public subnets `map_public_ip_on_launch=false` (10-network: user applies) | Trivy findings AWS-0080/0045/0164 gone |
 | F1 | **Done**: IAM Identity Center (AWS Organizations), user `surya` + authenticator MFA, AdministratorAccess 8h; profile `idp` is SSO; idp-admin access key Inactive (delete after a week) | `aws sts get-caller-identity` -> AWSReservedSSO role; 10-network plan via SSO: No changes |
 | F7 | Plan role applied by the user; PR #10 merged: CI plans 10-network/15-registry on PRs and checks drift on main | plan jobs: No changes |
-| F16 | Needs user decision | - |
+| F16 | **Decided: yes.** Org `surya-idp` created (id 334455734, Free, user is admin). Repo migration pending (order: OIDC trust first, then Apps, then transfers) | `gh api orgs/surya-idp` |
 | F3, F9, F12, F14, F15 | Not started (need a cluster session) | - |
 
 Also found: idp-portal has 14 Dependabot alerts (2 high) in dependencies; the image Trivy gate passes,
