@@ -308,3 +308,95 @@ resource "aws_iam_role_policy" "service_ci_ecr" {
   role   = aws_iam_role.service_ci.id
   policy = data.aws_iam_policy_document.service_ci_ecr.json
 }
+
+# ─── IAM role: idp-infra-plan (PLATFORM_REVIEW F7) ─────────────────────────
+# Assumed by idp-infra's own CI to run `terraform plan -lock=false` for the PERMANENT layers
+# (10-network, 15-registry) on pushes to main and on same-repo PRs (fork PRs never get an
+# OIDC token). Read-only and scoped: EC2/ECR describes plus exactly those two state files.
+# Deliberately NOT ReadOnlyAccess: that would expose every state file, including 20-data's
+# generated DB password.
+
+data "aws_iam_policy_document" "infra_plan_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values = [
+        "repo:DSurya11@162597218/idp-infra@1381729533:ref:refs/heads/main",
+        "repo:DSurya11@162597218/idp-infra@1381729533:pull_request",
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role" "infra_plan" {
+  name               = "idp-infra-plan"
+  assume_role_policy = data.aws_iam_policy_document.infra_plan_trust.json
+  description        = "idp-infra CI: read-only terraform plan of 10-network and 15-registry"
+}
+
+data "aws_iam_policy_document" "infra_plan" {
+  statement {
+    sid       = "Ec2Describe"
+    effect    = "Allow"
+    actions   = ["ec2:Describe*"]
+    resources = ["*"] # Describe* has no resource-level permissions
+  }
+
+  statement {
+    sid    = "EcrRead"
+    effect = "Allow"
+    actions = [
+      "ecr:DescribeRepositories",
+      "ecr:GetLifecyclePolicy",
+      "ecr:GetRepositoryPolicy",
+      "ecr:ListTagsForResource",
+    ]
+    resources = [
+      "arn:aws:ecr:ap-south-1:${data.aws_caller_identity.current.account_id}:repository/feature-flag-service",
+      "arn:aws:ecr:ap-south-1:${data.aws_caller_identity.current.account_id}:repository/idp-portal",
+    ]
+  }
+
+  statement {
+    sid       = "StateList"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.tfstate.arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["10-network/*", "15-registry/*"]
+    }
+  }
+
+  statement {
+    sid     = "StateRead"
+    effect  = "Allow"
+    actions = ["s3:GetObject"]
+    resources = [
+      "${aws_s3_bucket.tfstate.arn}/10-network/terraform.tfstate",
+      "${aws_s3_bucket.tfstate.arn}/15-registry/terraform.tfstate",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "infra_plan" {
+  name   = "plan-permanent-layers"
+  role   = aws_iam_role.infra_plan.id
+  policy = data.aws_iam_policy_document.infra_plan.json
+}

@@ -55,3 +55,49 @@ jobs:
           scan-ref: .
           severity: HIGH,CRITICAL
           exit-code: '1'
+
+  # Read-only plan of the PERMANENT layers (the others are destroyed between sessions).
+  # PR: shows the change in the job summary. main: a non-empty plan = drift (AWS != code)
+  # or a merged change nobody applied yet -> fail. Role idp-infra-plan lives in 00-bootstrap.
+  plan:
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        layer: [10-network, 15-registry]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.16.3
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::693906847772:role/idp-infra-plan
+          aws-region: ap-south-1
+      - name: Expose the OIDC credentials as profile "idp" (backend + provider pin that profile)
+        run: |
+          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID" --profile idp
+          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY" --profile idp
+          aws configure set aws_session_token "$AWS_SESSION_TOKEN" --profile idp
+      - name: terraform plan (${{ matrix.layer }})
+        env:
+          LAYER: ${{ matrix.layer }}
+        run: |
+          terraform -chdir="$LAYER" init -input=false -lockfile=readonly >/dev/null
+          set +e
+          terraform -chdir="$LAYER" plan -lock=false -input=false -no-color -detailed-exitcode > plan.txt
+          rc=$?
+          set -e
+          { echo "### $LAYER"; echo '```'; tail -c 60000 plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ $rc -eq 1 ]; then cat plan.txt; exit 1; fi
+          if [ $rc -eq 2 ] && [ "$GITHUB_EVENT_NAME" = push ]; then
+            echo "::error::$LAYER: main differs from AWS (drift, or a merged change not applied yet)"; exit 1
+          fi
+          grep -E '^Plan:|No changes' plan.txt || true
