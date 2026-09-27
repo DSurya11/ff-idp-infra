@@ -241,7 +241,9 @@ Each item ends with command output as evidence, per the HANDOVER convention.
 | F11 | **Done**: all actions pinned to full SHAs; Dependabot (actions, pip/npm/docker, terraform grouped; Backstage-coupled majors ignored); secret scanning + push protection, Dependabot security updates, CodeQL default setup on all 5 repos | idp-portal c17d263, feature-flag-service 651344a |
 | F4, F5 | AppProjects (bootstrap/default-locked/platform/apps) + PSA baseline-enforce / restricted-warn: idp-infra PR #8, idp-gitops PR #4, idp-portal PR #6 (merge order in HANDOVER 16b) | validate.sh green; no baseline-forbidden fields in rendered overlays |
 | F13 | RDS `storage_encrypted`, Valkey at-rest encryption (apply at next `make up`); public subnets `map_public_ip_on_launch=false` (10-network: user applies) | Trivy findings AWS-0080/0045/0164 gone |
-| F1, F16 | Need user decisions/actions (manual steps in HANDOVER 16b) | - |
+| F1 | **Done**: IAM Identity Center (AWS Organizations), user `surya` + authenticator MFA, AdministratorAccess 8h; profile `idp` is SSO; idp-admin access key Inactive (delete after a week) | `aws sts get-caller-identity` -> AWSReservedSSO role; 10-network plan via SSO: No changes |
+| F7 | Plan role applied by the user; PR #10 merged: CI plans 10-network/15-registry on PRs and checks drift on main | plan jobs: No changes |
+| F16 | Needs user decision | - |
 | F3, F9, F12, F14, F15 | Not started (need a cluster session) | - |
 
 Also found: idp-portal has 14 Dependabot alerts (2 high) in dependencies; the image Trivy gate passes,

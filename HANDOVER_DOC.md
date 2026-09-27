@@ -101,9 +101,9 @@ feature-flag-service (Step 12 leftover, long-lived PAT; PLATFORM_REVIEW F8).
 |---|---|
 | AWS Account ID | `693906847772` |
 | AWS Account Name | D S S V Raju |
-| IAM User | `idp-admin` |
-| IAM User ARN | `arn:aws:iam::693906847772:user/idp-admin` |
-| AWS CLI Profile | `idp` |
+| Human access | IAM Identity Center (since 2026-09-27, F1): user `surya`, permission set AdministratorAccess (8h), portal https://d-9f6758cf96.awsapps.com/start. The account is now an AWS Organizations management account |
+| Legacy IAM user | `idp-admin`: access key AKIA2DEASHAOE7YCAZFJ **Inactive** since 2026-09-27, no console password. Delete the key after ~2026-10-04 if nothing broke, plus `~/.aws/credentials.disabled` / `.bak` |
+| AWS CLI Profile | `idp` = SSO profile (`sso_session = surya`). Start of every session: `aws sso login --profile idp` |
 | AWS CLI Version | `aws-cli/2.36.49` |
 | Default Region | `ap-south-1` (Mumbai) |
 | Credit Balance | ~$200 USD |
@@ -117,9 +117,10 @@ feature-flag-service (Step 12 leftover, long-lived PAT; PLATFORM_REVIEW F8).
 
 **Verify identity before any session:**
 ```bash
+aws sso login --profile idp          # browser: surya + authenticator MFA
 aws sts get-caller-identity --profile idp
-# Must show: Account: 693906847772, Arn: arn:aws:iam::693906847772:user/idp-admin
-# NEVER operate as root
+# Must show: Account: 693906847772, Arn: ...:assumed-role/AWSReservedSSO_AdministratorAccess_.../surya
+# NEVER operate as root (root: MFA on, no access keys - verified 2026-09-27)
 ```
 
 ---
@@ -810,7 +811,7 @@ Build+teardown overhead is ~43 min of billing (~$0.20) even for a 5-minute test.
 
 ## 16b. Next Session Checklist
 Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itself -> work -> `make down`.
-1. `aws sts get-caller-identity --profile idp`, check `curl -s https://checkip.amazonaws.com` matches `allowed_cidr` in 30-cluster/variables.tf, then `make up` (~21-27 min). It waits for the root app to be Healthy.
+1. `aws sso login --profile idp`, then `aws sts get-caller-identity --profile idp` (SSO role, not an IAM user), check `curl -s https://checkip.amazonaws.com` matches `allowed_cidr` in 30-cluster/variables.tf, then `make up` (~21-27 min). It waits for the root app to be Healthy.
 2. Check: `kubectl get applications -n argocd` all Synced/Healthy; ALB: `kubectl get ingress -n feature-flag-dev`.
 3. No manual secret or migration steps any more (JWT generated, alembic Job automatic).
 4. Open Backstage: `kubectl port-forward svc/idp-portal -n backstage 7007:7007` -> http://localhost:7007 (guest sign-in).
