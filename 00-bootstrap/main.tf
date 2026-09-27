@@ -148,7 +148,7 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
 # main branch only. The condition is intentionally strict — no wildcards.
 #
 # SECURITY: The sub condition pins to a specific repo AND branch.
-#   repo:DSurya11@162597218/feature-flag-service@1368152185:ref:refs/heads/main
+#   repo:surya-idp@334455734/feature-flag-service@1368152185:ref:refs/heads/main
 #   Any other repo or branch cannot assume this role.
 #   Never use repo:*:* — that would allow any GitHub Action in any repo
 #   belonging to the GitHub OIDC provider to assume this role.
@@ -176,13 +176,10 @@ data "aws_iam_policy_document" "github_ci_trust" {
       # GitHub's OIDC sub claim now embeds immutable owner and repo IDs
       # (repo:OWNER@OWNER_ID/REPO@REPO_ID:...). The old "repo:OWNER/REPO:..." form no longer
       # matches, which shows up as "Not authorized to perform sts:AssumeRoleWithWebIdentity".
-      # IDs: DSurya11 = 162597218, feature-flag-service = 1368152185.
+      # IDs: org surya-idp = 334455734, feature-flag-service = 1368152185 (repo IDs survive transfers).
       # idp-portal = 1389614591 (Backstage, Step 29). Each entry is one exact repo + branch.
       values = [
-        "repo:DSurya11@162597218/feature-flag-service@1368152185:ref:refs/heads/main",
-        "repo:DSurya11@162597218/idp-portal@1389614591:ref:refs/heads/main",
-        # GitHub org migration (PLATFORM_REVIEW F16): same repo IDs under org surya-idp (334455734).
-        # The DSurya11 subjects are removed once all repos are transferred and CI is green.
+        # Repos live in GitHub org surya-idp (id 334455734) since 2026-09-27 (PLATFORM_REVIEW F16).
         "repo:surya-idp@334455734/feature-flag-service@1368152185:ref:refs/heads/main",
         "repo:surya-idp@334455734/idp-portal@1389614591:ref:refs/heads/main",
       ]
@@ -240,8 +237,8 @@ resource "aws_iam_role_policy" "github_ci_ecr" {
 # when this is applied, so their exact subjects cannot be listed like idp-github-ci's.
 #
 # DELIBERATE, NARROW EXCEPTION to "no wildcards in OIDC trust" (user decision 2026-09-27):
-#   - trust: any repo whose owner is account ID 162597218 (immutable - a renamed or
-#     re-registered "DSurya11" cannot match), main branch only
+#   - trust: any repo whose owner is org ID 334455734 (surya-idp) (immutable - a renamed or
+#     re-registered "surya-idp" cannot match), main branch only
 #   - blast radius: this role can ONLY create and push to ECR repos under svc/*. It cannot
 #     touch feature-flag-service or idp-portal images, or anything outside ECR.
 # The exact-match role above is unchanged.
@@ -266,8 +263,7 @@ data "aws_iam_policy_document" "service_ci_trust" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:DSurya11@162597218/*:ref:refs/heads/main",
-        "repo:surya-idp@334455734/*:ref:refs/heads/main", # org migration (F16)
+        "repo:surya-idp@334455734/*:ref:refs/heads/main",
       ]
     }
   }
@@ -343,9 +339,7 @@ data "aws_iam_policy_document" "infra_plan_trust" {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:DSurya11@162597218/idp-infra@1381729533:ref:refs/heads/main",
-        "repo:DSurya11@162597218/idp-infra@1381729533:pull_request",
-        "repo:surya-idp@334455734/idp-infra@1381729533:ref:refs/heads/main", # org migration (F16)
+        "repo:surya-idp@334455734/idp-infra@1381729533:ref:refs/heads/main",
         "repo:surya-idp@334455734/idp-infra@1381729533:pull_request",
       ]
     }
