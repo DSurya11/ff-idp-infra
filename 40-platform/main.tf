@@ -365,7 +365,7 @@ locals {
     spec:
       description: The root app-of-apps only
       sourceRepos:
-        - https://github.com/DSurya11/idp-gitops
+        - https://github.com/surya-idp/idp-gitops
       destinations:
         - server: https://kubernetes.default.svc
           namespace: argocd
