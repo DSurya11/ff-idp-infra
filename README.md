@@ -1,7 +1,7 @@
 # idp-infra — Internal Developer Platform infrastructure
 
 All AWS infrastructure for the IDP (EKS, data, networking, Argo CD bootstrap), managed with Terraform.
-Everything that runs on the cluster is deployed by Argo CD from [idp-gitops](https://github.com/DSurya11/idp-gitops).
+Everything that runs on the cluster is deployed by Argo CD from [idp-gitops](https://github.com/surya-idp/idp-gitops).
 
 ## Layer Architecture
 

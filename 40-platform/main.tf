@@ -365,7 +365,7 @@ locals {
     spec:
       project: default
       source:
-        repoURL: https://github.com/DSurya11/idp-gitops
+        repoURL: https://github.com/surya-idp/idp-gitops
         targetRevision: HEAD
         path: platform/argocd-apps
       destination:
