@@ -9,3 +9,5 @@ updates:
   - package-ecosystem: terraform
     directories: ["/00-bootstrap", "/10-network", "/15-registry", "/20-data", "/30-cluster", "/40-platform", "/modules/vpc"]
     schedule: {interval: weekly}
+    # One PR for a provider/module bump across all layers (they must move together)
+    groups: {terraform: {patterns: ["*"]}}
