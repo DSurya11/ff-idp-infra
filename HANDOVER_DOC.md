@@ -60,6 +60,13 @@ ff-idp -> idp (section 0, Finding 50); Terraform state locking turned on (Findin
 CI hardened (Finding 48 fixed); stale `argocd/application.yaml` and old catalog data removed
 from feature-flag-service.
 
+**Session 7 offline work (2026-09-27, after make down):** PLATFORM_REVIEW section 5a has the status.
+Done: idp-gitops ruleset + `validate` required check (F2), lock files (F6), IaC CI (F7), SHA-pinned
+actions + Dependabot + CodeQL + secret scanning (F11), PAT secret deleted (F8), old ff-idp bucket/table
+deleted, Apps renamed (bot now commits as `idp-ci-bot[bot]`). Prepared as DRAFT PRs (need a cluster):
+AppProjects + PSA (F4/F5), ESO 2.11.0 + v1 API (F10), terraform plan/drift CI (F7). Merge order and
+manual steps: section 16b. **idp-gitops main is protected: humans change it only through PRs.**
+
 **Read `PLATFORM_REVIEW.md` (this repo) before new work.** It maps every part of the platform
 against industry practice (sourced) and ranks 16 flaws. The top ones: a long-lived admin access key on
 the laptop (F1), idp-gitops main unprotected (F2), apps using the RDS master user (F3), everything in
@@ -807,6 +814,8 @@ Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itse
 2. Check: `kubectl get applications -n argocd` all Synced/Healthy; ALB: `kubectl get ingress -n feature-flag-dev`.
 3. No manual secret or migration steps any more (JWT generated, alembic Job automatic).
 4. Open Backstage: `kubectl port-forward svc/idp-portal -n backstage 7007:7007` -> http://localhost:7007 (guest sign-in).
+4a. BEFORE `make up` (manual, user): (1) `terraform -chdir=10-network apply` -> exactly 2 in-place changes (public subnets map_public_ip_on_launch -> false). (2) For PR idp-infra#10: `git checkout ci/terraform-plan`, `terraform -chdir=00-bootstrap plan` -> exactly 2 to add (role idp-infra-plan + its policy), apply, back to main, then mark #10 ready and merge.
+4b. Merge the draft PRs in this ORDER, then `make up`: idp-infra#8 (bootstrap AppProject) -> idp-infra#9 + idp-gitops#5 (ESO 2.11.0 + v1, together) -> idp-gitops#4 (AppProjects + PSA; locks `default`) -> idp-portal#6 (template). Each PR body lists its verification commands. If anything breaks, revert that PR in idp-gitops (through a PR) and re-sync.
 5. NEXT WORK: TEMPLATES_RESEARCH.md phase 1 (zero-touch dev delivery), then phases 2-4. Step 30 demo is done (section 17). Backstage: sign in with GitHub (not guest) to run templates; `hello-svc` is in idp-gitops, so `make up` redeploys it (image stays in ECR).
 6. The first `make up` on the new bucket succeeded (2026-09-27): the old backups `ff-idp-tfstate-693906847772` (versioned: delete all versions) and `ff-idp-tf-locks` can be deleted.
 7. `make down` must exit 0 and you must SEE it finish (Finding 37). Re-run it if interrupted.

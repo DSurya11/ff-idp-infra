@@ -228,6 +228,25 @@ Each item ends with command output as evidence, per the HANDOVER convention.
 
 ---
 
+## 5a. Progress (2026-09-27, cluster down, $0)
+
+| ID | Status | Evidence / where |
+|---|---|---|
+| F2 | **Done** for idp-gitops: ruleset (no delete/force-push, PR + required `validate` check from GitHub Actions; bypass only for the idp-ci-bot and idp-backstage Apps). Other 4 repos: no delete/force-push. | direct push rejected (GH013); bot pushes a09f3d0/abec630 went through; PR #3 merged via check |
+| F2 | `validate` workflow: every overlay rendered + kubeconform strict (K8s 1.35 + CRD catalog), kubeconform pinned + sha256 | negative test rejects wrong types and misspelled fields |
+| F6 | **Done**: lock files committed (linux amd64/arm64, darwin arm64); `.gitignore` excluded them | idp-infra 31d7d6a |
+| F7 | **Static CI done** (fmt, validate, tflint, Trivy IaC gate with reasoned `.trivyignore.yaml`). Plan-on-PR + drift check: idp-infra PR #10 (needs the user to apply the 00-bootstrap role) | CI green on 31d7d6a |
+| F8 | PAT secret deleted from feature-flag-service. The PAT itself: user revokes it | `gh secret list` |
+| F10 | ESO chart 2.11.0 + v1 manifests: idp-infra PR #9 + idp-gitops PR #5 (merge together, verify at `make up`) | validate.sh green on v1 schemas |
+| F11 | **Done**: all actions pinned to full SHAs; Dependabot (actions, pip/npm/docker, terraform grouped; Backstage-coupled majors ignored); secret scanning + push protection, Dependabot security updates, CodeQL default setup on all 5 repos | idp-portal c17d263, feature-flag-service 651344a |
+| F4, F5 | AppProjects (bootstrap/default-locked/platform/apps) + PSA baseline-enforce / restricted-warn: idp-infra PR #8, idp-gitops PR #4, idp-portal PR #6 (merge order in HANDOVER 16b) | validate.sh green; no baseline-forbidden fields in rendered overlays |
+| F13 | RDS `storage_encrypted`, Valkey at-rest encryption (apply at next `make up`); public subnets `map_public_ip_on_launch=false` (10-network: user applies) | Trivy findings AWS-0080/0045/0164 gone |
+| F1, F16 | Need user decisions/actions (manual steps in HANDOVER 16b) | - |
+| F3, F9, F12, F14, F15 | Not started (need a cluster session) | - |
+
+Also found: idp-portal has 14 Dependabot alerts (2 high) in dependencies; the image Trivy gate passes,
+so they are in build-time/dev dependencies or have no fixed version yet. Review the security PRs.
+
 ## 6. Sources
 
 1. AWS IAM, Security best practices (temporary credentials, Identity Center): https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
