@@ -22,6 +22,7 @@ old names.
 | state bucket `ff-idp-tfstate-693906847772`, table `ff-idp-tf-locks` | `idp-tfstate-693906847772`, `idp-tf-locks` |
 | CI roles `ff-idp-github-ci`, `ff-idp-service-ci` | `idp-github-ci`, `idp-service-ci` |
 | AWS profile `ff-idp`, IAM user `ff-idp-admin`, laptop secrets dir `~/.ff-idp` | `idp`, `idp-admin`, `~/.idp` |
+| GitHub owner `DSurya11` (personal) | GitHub org **`surya-idp`** (id 334455734, Free; user DSurya11 is admin). All 4 repos transferred 2026-09-27, same repo IDs (F16) |
 | GitHub Apps `ff-idp-ci-bot`, `ff-idp-backstage` | renamed 2026-09-27 by the user in the GitHub UI (to `idp-ci-bot` / `idp-backstage` as suggested; confirm). IDs unchanged. Still to do: bot `git config user.name` in both CI workflows (use the token action's `app-slug` output), comments, secrets `FF_IDP_CI_BOT_*` |
 
 The old state bucket and lock table were detached from 00-bootstrap state (not destroyed) as a
@@ -224,10 +225,10 @@ orphaned snapshots. Must be true. Set and verified in 20-data/main.tf.
 
 | Repo | Local path | What it holds |
 |---|---|---|
-| [idp-infra](https://github.com/DSurya11/idp-infra) | `~/projects/idp-infra` | Terraform layers, Makefile, `scripts/` (down.sh, verify-empty.py, load-local-secrets.sh), `tests/rollout-load.js`, this doc, `PLATFORM_REVIEW.md`, `TEMPLATES_RESEARCH.md` |
-| [idp-gitops](https://github.com/DSurya11/idp-gitops) | `~/projects/idp-gitops` | Everything Argo CD deploys (layout below). Nothing is applied by hand |
-| [idp-portal](https://github.com/DSurya11/idp-portal) (public) | `~/projects/idp-portal` | Backstage 1.54 app, its CI, `templates/all-templates.yaml` + `templates/python-service/` |
-| [feature-flag-service](https://github.com/DSurya11/feature-flag-service) | `~/projects/feature-flag-service` | The flag API (FastAPI, Alembic), its CI, `catalog-info.yaml` |
+| [idp-infra](https://github.com/surya-idp/idp-infra) | `~/projects/idp-infra` | Terraform layers, Makefile, `scripts/` (down.sh, verify-empty.py, load-local-secrets.sh), `tests/rollout-load.js`, this doc, `PLATFORM_REVIEW.md`, `TEMPLATES_RESEARCH.md` |
+| [idp-gitops](https://github.com/surya-idp/idp-gitops) | `~/projects/idp-gitops` | Everything Argo CD deploys (layout below). Nothing is applied by hand |
+| [idp-portal](https://github.com/surya-idp/idp-portal) (public) | `~/projects/idp-portal` | Backstage 1.54 app, its CI, `templates/all-templates.yaml` + `templates/python-service/` |
+| [feature-flag-service](https://github.com/surya-idp/feature-flag-service) | `~/projects/feature-flag-service` | The flag API (FastAPI, Alembic), its CI, `catalog-info.yaml` |
 
 Cleaned 2026-09-27: one-off helper scripts, old transcripts, duplicate kubectl/terraform
 binaries, committed test `.db` files, the Step 11 `terraform/` folder in feature-flag-service
@@ -483,19 +484,22 @@ Their CI (copied from `templates/python-service/skeleton/.github/workflows/ci.ym
 config is added by the template's PR to idp-gitops, pinned to the first commit SHA.
 
 ### OIDC trust (00-bootstrap)
-`sub` now embeds immutable IDs: `repo:DSurya11@162597218/<repo>@<repo_id>:ref:refs/heads/main`.
+`sub` embeds immutable IDs: `repo:surya-idp@334455734/<repo>@<repo_id>:ref:refs/heads/main`
+(org since 2026-09-27; repo IDs survived the transfer).
 - idp-github-ci, StringEquals: `feature-flag-service@1368152185`, `idp-portal@1389614591`.
-- idp-service-ci, StringLike: `repo:DSurya11@162597218/*:ref:refs/heads/main` (user-approved
+- idp-service-ci, StringLike: `repo:surya-idp@334455734/*:ref:refs/heads/main` (user-approved
   exception; the role can only touch ECR `svc/*`).
+- idp-infra-plan, StringEquals: `idp-infra@1381729533` main + `pull_request` (read-only plan, F7).
 Renaming a repo changes `sub` (the name is in it): update the trust before pushing (Finding 50).
 
 ### GitHub Apps
 | App | ID | Installed on | Used by |
 |---|---|---|---|
-| ff-idp-ci-bot | 5034584 | idp-gitops | CI bumps. Secrets `FF_IDP_CI_BOT_APP_ID` / `FF_IDP_CI_BOT_PRIVATE_KEY` in feature-flag-service and idp-portal |
-| ff-idp-backstage | 5088974 (client Iv23lij5ChFBE8WFtPEH) | all DSurya11 repos | Backstage catalog + scaffolder. Credentials in `~/.idp` (700/600), never in Git or TF state. Actions: read not granted yet (Step 31) |
+| `idp-ci-bot` (was ff-idp-ci-bot) | 5034584 | org surya-idp (All repositories for now; narrow to idp-gitops) | CI bumps; commits as `idp-ci-bot[bot]` (name from the token's app-slug). Secrets `FF_IDP_CI_BOT_APP_ID` / `FF_IDP_CI_BOT_PRIVATE_KEY` in feature-flag-service and idp-portal (to be replaced by Image Updater) |
+| `idp-backstage-surya` (was ff-idp-backstage; NOT "idp-backstage") | 5088974 (client Iv23lij5ChFBE8WFtPEH) | org surya-idp, All repositories | Backstage catalog + scaffolder + GitHub sign-in. Credentials in `~/.idp` (700/600), never in Git or TF state. Actions: read not granted yet (Step 31) |
 
-App names were left un-renamed (display only; CI uses the App ID).
+Both Apps are owned by org surya-idp (transferred 2026-09-27; IDs, client ID and keys unchanged).
+Both bypass the idp-gitops ruleset (bypass actors = these App IDs).
 
 ## 12. Key Terraform Snippets
 
@@ -671,6 +675,7 @@ resource "aws_db_instance" "postgres" {
 **Finding 49: Terraform state was never locked.** The DynamoDB lock table existed, but no backend referenced it (`dynamodb_table` was only in this doc's example), so two concurrent applies could have corrupted state. Found during the rename migration. All backends now set `use_lockfile = true` (S3-native lock, TF >= 1.10; `dynamodb_table` is deprecated). Verified: a second concurrent plan fails with "Error acquiring the state lock".
 **Finding 50: Renaming a "permanent" layer is a state migration, not a find-and-replace.** S3 buckets and security groups cannot be renamed; IAM roles are replaced. Done as: `state rm` old bucket/table (kept as backup) -> apply new -> `s3 sync` state -> `init -reconfigure` per layer -> no-change plans prove code == AWS. The GitHub OIDC `sub` claim contains the repo NAME, so renaming a repo breaks CI until the trust policy matches (IDs are stable, names are not).
 **Finding 51: Neon retired.** The Step 21 A/B was the only reason to keep the Neon project (Step 11, `90-legacy-neon`). With the result recorded (section 16a: p95 ~970 ms -> ~20 ms), the project was destroyed and the layer, its tfvars (Neon API key) and `make neon-plan` removed. Nothing deployed ever read from Neon after Step 21 (DATABASE_URL comes from idp/db-creds = RDS).
+**Finding 56: Transferring a repo to an org silently drops security settings and ruleset bypass actors.** After moving the 4 repos to surya-idp (2026-09-27): secret scanning, push protection and CodeQL default setup were all back to disabled, and the idp-gitops ruleset kept its rules but lost its App bypass list (bot pushes to main would have been rejected). Repo IDs, secrets, rulesets, PRs and Dependabot config survived. Re-enabled/restored immediately; verified with a real CI bot push (dfb88f3, 6728c5e). Checklist for any transfer: re-check `security_and_analysis`, code-scanning default setup and each ruleset's `bypass_actors`.
 **Finding 27: Spend audit.** As of 2026-09-26, ~$1 of credits used over 3 sessions, consistent with the ~$0.73/session model. Cost Explorer lags ~24h and shows ~$0; use Billing > Credits for the real balance. All regions checked empty.
 
 ---
@@ -814,8 +819,9 @@ Steps 23-27 are VERIFIED. A session is now: `make up` -> everything deploys itse
 2. Check: `kubectl get applications -n argocd` all Synced/Healthy; ALB: `kubectl get ingress -n feature-flag-dev`.
 3. No manual secret or migration steps any more (JWT generated, alembic Job automatic).
 4. Open Backstage: `kubectl port-forward svc/idp-portal -n backstage 7007:7007` -> http://localhost:7007 (guest sign-in).
-4a. BEFORE `make up` (manual, user): (1) `terraform -chdir=10-network apply` -> exactly 2 in-place changes (public subnets map_public_ip_on_launch -> false). (2) For PR idp-infra#10: `git checkout ci/terraform-plan`, `terraform -chdir=00-bootstrap plan` -> exactly 2 to add (role idp-infra-plan + its policy), apply, back to main, then mark #10 ready and merge.
-4b. Merge the draft PRs in this ORDER, then `make up`: idp-infra#8 (bootstrap AppProject) -> idp-infra#9 + idp-gitops#5 (ESO 2.11.0 + v1, together) -> idp-gitops#4 (AppProjects + PSA; locks `default`) -> idp-portal#6 (template). Each PR body lists its verification commands. If anything breaks, revert that PR in idp-gitops (through a PR) and re-sync.
+4a. (DONE 2026-09-27) BEFORE `make up` (manual, user): (1) `terraform -chdir=10-network apply` -> exactly 2 in-place changes (public subnets map_public_ip_on_launch -> false). (2) For PR idp-infra#10: `git checkout ci/terraform-plan`, `terraform -chdir=00-bootstrap plan` -> exactly 2 to add (role idp-infra-plan + its policy), apply, back to main, then mark #10 ready and merge.
+4c. Manual, user (after the org migration): (1) `terraform -chdir=00-bootstrap plan` -> exactly 3 to change (only `-` DSurya11 lines in github_ci, service_ci, infra_plan), then apply (PR #14 is merged). (2) https://github.com/organizations/surya-idp/settings/installations -> idp-ci-bot -> Configure -> "Only select repositories": idp-gitops. (3) https://github.com/settings/installations (personal account): uninstall any leftover idp-ci-bot / idp-backstage-surya installation. (4) After ~2026-10-04: delete the inactive idp-admin access key + `~/.aws/credentials.disabled` / `.bak`.
+4b. Merge the draft PRs in this ORDER, then `make up` (all under github.com/surya-idp/...): idp-infra#8 (bootstrap AppProject) -> idp-infra#9 + idp-gitops#5 (ESO 2.11.0 + v1, together) -> idp-gitops#4 (AppProjects + PSA; locks `default`) -> idp-portal#6 (template). Each PR body lists its verification commands. If anything breaks, revert that PR in idp-gitops (through a PR) and re-sync.
 5. NEXT WORK: TEMPLATES_RESEARCH.md phase 1 (zero-touch dev delivery), then phases 2-4. Step 30 demo is done (section 17). Backstage: sign in with GitHub (not guest) to run templates. `hello-svc` (the 2026-09-27 demo) was deleted by user decision; the next demo service comes from template v2.
 6. The first `make up` on the new bucket succeeded (2026-09-27): the old backups `ff-idp-tfstate-693906847772` (versioned: delete all versions) and `ff-idp-tf-locks` can be deleted.
 7. `make down` must exit 0 and you must SEE it finish (Finding 37). Re-run it if interrupted.
@@ -1026,7 +1032,7 @@ k6 load during rolling update. Zero failed requests required.
 
 #### Step 29 - Backstage in cluster: DONE and VERIFIED (2026-09-27)
 Verified live: `make up` alone deployed it (Argo `idp-portal` Synced/Healthy); Ready ~30s after start; catalog DB migrations ran on RDS over verified TLS; via port-forward: UI HTTP 200, `/.backstage/health/v1/readiness` ok, guest sign-in ok; catalog contains `feature-flag-service` (owner DSurya11) + resources feature-flag-postgres / feature-flag-redis, read live from GitHub. Node memory after removing EBS CSI and adding Backstage: 52-57% used. Expected warnings: kubernetes plugin unconfigured (Step 31), permissions disabled.
-- Repo: github.com/DSurya11/idp-portal (public; native ubuntu-24.04-arm runners, ~3 min build). CI: install/tsc/build -> arm64 image -> ECR `idp-portal` (15-registry, keep 5) via the same OIDC role (exact subject added) -> Trivy gate -> ff-idp-ci-bot bumps `apps/idp-portal/overlays/dev`.
+- Repo: github.com/surya-idp/idp-portal (public; native ubuntu-24.04-arm runners, ~3 min build). CI: install/tsc/build -> arm64 image -> ECR `idp-portal` (15-registry, keep 5) via the same OIDC role (exact subject added) -> Trivy gate -> ff-idp-ci-bot bumps `apps/idp-portal/overlays/dev`.
 - env-config: `apps/idp-portal` (namespace `backstage`, 1 replica, 512Mi request / 1Gi limit, DB creds from idp/db-creds via ESO), Argo Application `idp-portal` (wave 1).
 - ACCESS: NO Ingress. `kubectl port-forward svc/idp-portal -n backstage 7007:7007` -> http://localhost:7007. Reason: Backstage needs a fixed baseUrl and the ALB hostname changes every session; guest sign-in is acceptable only while unexposed. User asked for "only me" access - port-forward is stricter than an IP allowlist.
 - Capacity: EBS CSI add-on removed (unused; freed memory for Backstage).
